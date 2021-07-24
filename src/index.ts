@@ -28,11 +28,11 @@ import {
   generateIdentityKeyPair,
   generateRegistrationId,
   generateSignedPreKey,
-  sharedKey,
+  sharedKey
 } from "./utils/Curve";
 import { WapNode } from "./proto/WapNode";
 import * as QR from "qrcode-terminal";
-import { encodeB64 } from "./utils/Base64";
+import {  encodeB64 } from "./utils/Base64";
 import { S_WHATSAPP_NET } from "./proto/WapJid";
 import { generatePayloadLogin } from "./payloads/LoginPayload";
 
@@ -40,7 +40,7 @@ import { generatePayloadLogin } from "./payloads/LoginPayload";
   const socket = new Socket();
   socket.open();
 
-  const ephemeralKeyPair = await generateIdentityKeyPair();
+  const ephemeralKeyPair = generateIdentityKeyPair();
 
   socket.onOpen = async () => {
     console.log("conn open");
@@ -124,10 +124,8 @@ import { generatePayloadLogin } from "./payloads/LoginPayload";
     // TODO VERIFY CERT
 
     const noiseKey = generateIdentityKeyPair();
-
-    const keyEnc = await noise.encrypt(
-      new Uint8Array(noiseKey.pubKey)
-    );
+  
+    const keyEnc = await noise.encrypt(new Uint8Array(noiseKey.pubKey));
 
     noise.mixIntoKey(
       sharedKey(
@@ -180,7 +178,7 @@ import { generatePayloadLogin } from "./payloads/LoginPayload";
     };
 
     const advSecretKey = new Uint8Array(randomBytes(32));
-
+    
     const parsePairDevice = (node: WapNode) => {
       //var e = 6 === _.length ? 6e4 : 2e4
       const refs = node.content[0].content.map((node: WapNode) => {
@@ -205,7 +203,7 @@ import { generatePayloadLogin } from "./payloads/LoginPayload";
       const noiseKeyB64 = encodeB64(noiseKey.pubKey);
       const identityKeyB64 = encodeB64(signedIdentityKey.pubKey);
       const advB64 = encodeB64(advSecretKey);
-      const qrString = [ref, noiseKeyB64, identityKeyB64, advB64].join(',');
+      const qrString = [ref, noiseKeyB64, identityKeyB64, advB64].join(",");
 
       QR.generate(qrString, { small: true });
       console.log(qrString);
@@ -258,6 +256,5 @@ import { generatePayloadLogin } from "./payloads/LoginPayload";
 
       handleStanza(stanza);
     });
-
   };
 })();
