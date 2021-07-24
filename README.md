@@ -1,0 +1,3 @@
+# multidevice
+
+Research about Multidevice
