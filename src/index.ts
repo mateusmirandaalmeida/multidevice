@@ -88,21 +88,14 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
         // TODO VERIFY CERT
 
-        //const noiseKey = generateIdentityKeyPair();
         const noiseKey = await storageService.getOrSave('noiseKey', () => generateIdentityKeyPair());
 
         const keyEnc = await noise.encrypt(new Uint8Array(noiseKey.pubKey));
 
         noise.mixIntoKey(sharedKey(new Uint8Array(serverEphemeral), new Uint8Array(noiseKey.privKey)));
 
-        //const signedIdentityKey = generateIdentityKeyPair();
-        //const signedPreKey = generateSignedPreKey(signedIdentityKey, 1);
-
         const signedIdentityKey = await storageService.getOrSave<KeyPair>('signedIdentityKey', () => generateIdentityKeyPair());
-
         const signedPreKey = await storageService.getOrSave<SignedKeyPair>('signedPreKey', () => generateSignedPreKey(signedIdentityKey, 1));
-
-        //const registrationId = generateRegistrationId();
         const registrationId = await storageService.getOrSave<number>('registrationId', () => generateRegistrationId());
 
         const me = storageService.get<WapJid>('me');
@@ -110,7 +103,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
         const payload = !me ? generatePayloadRegister(registrationId, signedIdentityKey, signedPreKey) : generatePayloadLogin(me);
 
-        //const payload = generatePayloadLogin();
 
         const payloadEnc = await noise.encrypt(payload);
 
@@ -190,31 +182,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
         };
 
         const sendPassiveIq = async (e: boolean) => {
-            /*var t = e ? (0,
-            i.wap)("passive", null) : (0,
-            i.wap)("active", null)
-              , r = (0,
-            i.wap)("iq", {
-                to: i.S_WHATSAPP_NET,
-                xmlns: "passive",
-                type: "set",
-                id: (0,
-                i.generateId)()
-            }, t);
-            return (0,
-            n.sendIq)(r, s).then((t=>{
-                if (!t.success) {
-                    var {errorCode: r, errorText: a} = t;
-                    return __LOG__(3)`sendPassiveIq: sever response with ${r}, ${a}`,
-                    {
-                        errorCode: r,
-                        errorText: a
-                    }
-                }
-                __LOG__(2)`sendPassiveIq: passive mode set to ${String(e)}`
-            }
-            ))*/
-
             const stanza = new WapNode('iq', {
                 to: S_WHATSAPP_NET,
                 xmlns: 'passive',
@@ -264,7 +231,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
                 return;
             }
 
-            console.log('RECEVEID CODE', code);
             if (code == '515') {
                 // start login
                 console.log('restarting socket');
@@ -354,7 +320,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
             const accountEnc = encodeProto(ADVSignedDeviceIdentitySpec, account).readByteArray();
 
-            console.log('keyIndex', keyIndex);
             const stanza = encodeStanza(
                 new WapNode(
                     'iq',
@@ -380,15 +345,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
             socketConn.sendFrame(stanza);
 
             await storageService.save('me', wid);
-
-            console.log({
-                id,
-                account,
-                businessName,
-                wid,
-                accountSignature,
-                accountSignatureKey,
-            });
         };
 
         const handleStanza = async (stanza: WapNode) => {
@@ -452,9 +408,9 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
         socketConn.setOnFrame(async (e) => {
             const data = await unpackStanza(e);
             const stanza = decodeStanza(data);
-            console.log(stanza);
 
             await handleStanza(stanza);
+            console.log(stanza);
         });
     };
 })();
