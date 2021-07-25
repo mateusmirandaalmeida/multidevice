@@ -1,7 +1,8 @@
 import { encodeProto } from "../proto/EncodeProto";
 import { ClientPayloadSpec } from "../proto/ProtoSpec";
+import { WapJid } from "../proto/WapJid";
 
-export const generatePayloadLogin = () => {
+export const generatePayloadLogin = (user: WapJid) => {
   const payload = {
     passive: true,
     connectType: 1,
@@ -26,9 +27,11 @@ export const generatePayloadLogin = () => {
     webInfo: {
       webSubPlatform: 0,
     },
-    username: 15163363862,
-    device: 11,
+    username: parseInt(user.getUser(), 10),
+    device: user.getDevice(),
   };
+
+  console.log('login payload', payload);
 
   return encodeProto(ClientPayloadSpec, payload).readByteArray();
 };

@@ -194,3 +194,43 @@ export const CompanionPropsSpec = {
     requireFullSync: [4, SPEC_CONSTS.TYPES.BOOL],
   },
 };
+
+export const ADVKeyIndexListSpec = {
+  internalSpec: {
+    rawId: [1, SPEC_CONSTS.TYPES.UINT32],
+    timestamp: [2, SPEC_CONSTS.TYPES.UINT64],
+    currentIndex: [3, SPEC_CONSTS.TYPES.UINT32],
+    validIndexes: [4, SPEC_CONSTS.FLAGS.REPEATED | SPEC_CONSTS.FLAGS.PACKED | SPEC_CONSTS.TYPES.UINT32]
+  }
+};
+
+export const ADVSignedKeyIndexListSpec = {
+  internalSpec: {
+    details: [1, SPEC_CONSTS.TYPES.BYTES],
+    accountSignature: [2, SPEC_CONSTS.TYPES.BYTES]
+  }
+};
+
+export const ADVDeviceIdentitySpec = {
+  internalSpec: {
+    rawId: [1, SPEC_CONSTS.TYPES.UINT32],
+    timestamp: [2, SPEC_CONSTS.TYPES.UINT64],
+    keyIndex: [3, SPEC_CONSTS.TYPES.UINT32]
+  }
+};
+
+export const ADVSignedDeviceIdentitySpec = {
+  internalSpec: {
+    details: [1, SPEC_CONSTS.TYPES.BYTES],
+    accountSignatureKey: [2, SPEC_CONSTS.TYPES.BYTES],
+    accountSignature: [3, SPEC_CONSTS.TYPES.BYTES],
+    deviceSignature: [4, SPEC_CONSTS.TYPES.BYTES]
+  }
+};
+
+export const ADVSignedDeviceIdentityHMACSpec = {
+  internalSpec: {
+    details: [1, SPEC_CONSTS.TYPES.BYTES],
+    hmac: [2, SPEC_CONSTS.TYPES.BYTES]
+  }
+};

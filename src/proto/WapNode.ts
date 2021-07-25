@@ -16,6 +16,14 @@ export class WapNode {
     return data.readString(data.size());
   }
 
+  getContentByTag(tagName: string): WapNode {
+    if (!Array.isArray(this.content)) {
+      return null;
+    }
+
+    return this.content.find((node) => node.tag == tagName);
+  }
+
   /*toString() {
         let e = "<" + this.tag;
 

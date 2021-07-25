@@ -75,6 +75,13 @@ export class Socket {
     this.conn.close();
   }
 
+  public restart() {
+    this.close();
+    this.conn = null;
+
+    this.open();
+  }
+
   public requestSend() {
     this.throwIfClosed();
 

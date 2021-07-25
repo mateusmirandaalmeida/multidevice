@@ -1,37 +1,94 @@
 import * as Curve from "curve25519-js";
+import { decode } from "punycode";
+import { decodeB64, encodeB64 } from "./Base64";
 import { randomBytes } from "./Utils";
-import { curve } from 'libsignal';
 
-export interface KeyPair {
-  pubKey: Uint8Array;
-  privKey: Uint8Array;
+
+export class Key {
+  constructor(public key: Uint8Array) {}
+
+  public toJSON() {
+    return {
+      type: 'key',
+      key: encodeB64(this.key),
+    }
+  }
+
+  static parse(data: any) {
+    const key = new Uint8Array(decodeB64(data.key));
+    return new Key(key);
+  }
 }
 
-export interface SignedKeyPair {
-  keyId: number;
-  keyPair: KeyPair;
-  signature: Uint8Array;
+export class KeyPair {
+  constructor(public pubKey: Uint8Array, public privKey: Uint8Array) {}
+
+  public toJSON() {
+    return {
+      type: 'keyPair',
+      pubKey: encodeB64(this.pubKey),
+      privKey: encodeB64(this.privKey),
+    }
+  }
+
+  static parse(data: any) {
+    const pubKey = new Uint8Array(decodeB64(data.pubKey));
+    const privKey = new Uint8Array(decodeB64(data.privKey));
+
+    return new KeyPair(pubKey, privKey);
+  }
 }
 
-export interface PreKey {
-  keyId: number;
-  keyPair: KeyPair;
+export class SignedKeyPair {
+  constructor(public keyId: number, public keyPair: KeyPair, public signature: Uint8Array) {}
+
+  public toJSON() {
+    return {
+      type: 'signedKeyPair',
+      keyId: this.keyId,
+      keyPair: this.keyPair.toJSON(),
+      signature: encodeB64(this.signature),
+    }
+  }
+
+  static parse(data: any) {
+    const keyPair = KeyPair.parse(data.keyPair);
+    const keyId: number = data.keyId;
+    const signature = new Uint8Array(decodeB64(data.signature))
+
+    return new SignedKeyPair(keyId, keyPair, signature);
+  }
+}
+
+export class PreKey {
+  constructor(public keyId: number, public keyPair: KeyPair) {}
+
+  public toJSON() {
+    return {
+      type: 'preKey',
+      keyId: this.keyId,
+      keyPair: this.keyPair.toJSON(),
+    }
+  }
+
+  static parse(data: any) {
+    const keyPair = KeyPair.parse(data.keyPair);
+    const keyId: number = data.keyId;
+
+    return new PreKey(keyId, keyPair);
+  }
 }
 
 export const isNonNegativeInteger = (n: number) =>
   typeof n === "number" && n % 1 === 0 && n >= 0;
 
 export const generateIdentityKeyPair = () => {
-  /*const keyPair = Curve.generateKeyPair(randomBytes(32));
+  const keyPair = Curve.generateKeyPair(randomBytes(32));
 
-  return <KeyPair>{
-    pubKey: keyPair.public,
-    privKey: keyPair.private,
-  };*/
-
-  const keyPair = curve.generateKeyPair();
-  keyPair.pubKey = keyPair.pubKey.slice(1);
-  return <KeyPair>keyPair;
+  return new KeyPair(
+    keyPair.public,
+    keyPair.private,
+  );
 };
 
 export const generateRegistrationId = function () {
@@ -47,16 +104,14 @@ export const generateSignedPreKey = (
     throw new TypeError("Invalid argument for signedKeyId: " + signedKeyId);
   }
 
-  const keyPair = curve.generateKeyPair();
-  const sig = curve.calculateSignature(identityKeyPair.privKey, keyPair.pubKey);
-    return {
-        keyId: signedKeyId,
-        keyPair: {
-          privKey: keyPair.privKey,
-          pubKey: keyPair.pubKey.slice(1)
-        },
-        signature: sig
-    };
+  const keyPair = generateIdentityKeyPair(); 
+  const pubKey = new Uint8Array(33); // (ノಠ益ಠ)ノ彡┻━┻
+  pubKey.set([5], 0);
+  pubKey.set(keyPair.pubKey, 1);
+
+  const sig = Curve.sign(identityKeyPair.privKey, pubKey, null);
+
+  return new SignedKeyPair(signedKeyId, keyPair, sig);
 };
 
 export const generatePreKey = (keyId: number) => {
@@ -65,12 +120,17 @@ export const generatePreKey = (keyId: number) => {
   }
 
   const keyPair = generateIdentityKeyPair();
-  return <PreKey>{
-    keyId,
-    keyPair,
-  };
+  return new PreKey(keyId, keyPair);
 };
 
 export const sharedKey = (pubKey: Uint8Array, privKey: Uint8Array) => {
   return Curve.sharedKey(privKey, pubKey);
+}
+
+export const verifySignature = (pubKey: Uint8Array, message: any, sig: any) => {
+  return Curve.verify(pubKey, message, sig);
+}
+
+export const calculateSignature = (privKey: Uint8Array, message: Uint8Array) => {
+  return Curve.sign(privKey, message, null);
 }

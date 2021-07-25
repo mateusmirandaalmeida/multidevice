@@ -93,4 +93,8 @@ export class FrameSocket {
   close() {
     this.socket.close();
   }
+
+  restart() {
+    this.socket.restart();
+  }
 }

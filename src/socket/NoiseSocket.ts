@@ -114,4 +114,8 @@ export class NoiseSocket {
   close() {
     this.socket.close();
   }
+
+  restart() {
+    this.socket.restart();
+  }
 }

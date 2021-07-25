@@ -1,5 +1,6 @@
 import * as Curve from "curve25519-js";
 import { randomBytes } from "./Utils";
+import { curve } from 'libsignal';
 
 export interface KeyPair {
   pubKey: Uint8Array;
@@ -21,12 +22,16 @@ export const isNonNegativeInteger = (n: number) =>
   typeof n === "number" && n % 1 === 0 && n >= 0;
 
 export const generateIdentityKeyPair = () => {
-  const keyPair = Curve.generateKeyPair(randomBytes(32));
+  /*const keyPair = Curve.generateKeyPair(randomBytes(32));
 
   return <KeyPair>{
     pubKey: keyPair.public,
     privKey: keyPair.private,
-  };
+  };*/
+
+  const keyPair = curve.generateKeyPair();
+  keyPair.pubKey = keyPair.pubKey.slice(1);
+  return <KeyPair>keyPair;
 };
 
 export const generateRegistrationId = function () {
@@ -42,13 +47,16 @@ export const generateSignedPreKey = (
     throw new TypeError("Invalid argument for signedKeyId: " + signedKeyId);
   }
 
-  const keyPair = generateIdentityKeyPair();
-  const sig = Curve.sign(identityKeyPair.privKey, keyPair.pubKey, null);
-  return <SignedKeyPair>{
-    keyId: signedKeyId,
-    keyPair,
-    signature: sig,
-  };
+  const keyPair = curve.generateKeyPair();
+  const sig = curve.calculateSignature(identityKeyPair.privKey, keyPair.pubKey);
+    return {
+        keyId: signedKeyId,
+        keyPair: {
+          privKey: keyPair.privKey,
+          pubKey: keyPair.pubKey.slice(1)
+        },
+        signature: sig
+    };
 };
 
 export const generatePreKey = (keyId: number) => {
