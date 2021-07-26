@@ -14,6 +14,11 @@ class StorageService {
         this.loadStorage();
     }
 
+    public clearAll() {
+        this.storage = {};
+        this.writeStorage();
+    }
+
     public get<T = any>(key: string): T {
         return this.storage[key] ?? null;
     }

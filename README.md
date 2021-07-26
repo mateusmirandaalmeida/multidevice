@@ -15,3 +15,21 @@ To run the example script, download or clone the repo and then type the followin
 1. `cd multidevice`
 2. `npm install`
 3. `npm start`
+
+## Debug
+
+to debug the code, create a "launch.json" file inside the ".vscode" folder
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "command": "npm start",
+            "name": "Run debugger",
+            "request": "launch",
+            "type": "node-terminal"
+        }
+    ]
+}
+```
