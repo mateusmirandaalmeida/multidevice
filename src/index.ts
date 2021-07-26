@@ -1,4 +1,17 @@
-import { DEFAULT_ORIGIN, WS_URL, randomBytes, areBuffersEqual, intToBytes, VERSION_ENCODED, HEADER, CERT_ISSUER, BIG_ENDIAN_CONTENT, KEY_BUNDLE_TYPE, xmppPreKey, xmppSignedPreKey } from './utils/Utils';
+import {
+    DEFAULT_ORIGIN,
+    WS_URL,
+    randomBytes,
+    areBuffersEqual,
+    intToBytes,
+    VERSION_ENCODED,
+    HEADER,
+    CERT_ISSUER,
+    BIG_ENDIAN_CONTENT,
+    KEY_BUNDLE_TYPE,
+    xmppPreKey,
+    xmppSignedPreKey,
+} from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
@@ -19,7 +32,7 @@ import { S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
 import { storageService } from './services/StorageService';
 import { hmacSha256 } from './utils/HKDF';
-import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded } from './signal/Signal';
+import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded, putServerHasPreKeys, getServerHasPreKeys } from './signal/Signal';
 (async () => {
     storageService.init('./storage.json');
 
@@ -103,7 +116,6 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
         const payload = !me ? generatePayloadRegister(registrationId, signedIdentityKey, signedPreKey) : generatePayloadLogin(me);
 
-
         const payloadEnc = await noise.encrypt(payload);
 
         noise.send(
@@ -171,25 +183,34 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
                     type: 'set',
                     to: S_WHATSAPP_NET,
                 },
-                [new WapNode('registration', null, BIG_ENDIAN_CONTENT(registrationId)), new WapNode('type', null, KEY_BUNDLE_TYPE), new WapNode('identity', null, identityKey.pubKey), new WapNode('list', null, preKeys.map(xmppPreKey)), xmppSignedPreKey(signedPreKey)],
+                [
+                    new WapNode('registration', null, BIG_ENDIAN_CONTENT(registrationId)),
+                    new WapNode('type', null, KEY_BUNDLE_TYPE),
+                    new WapNode('identity', null, identityKey.pubKey),
+                    new WapNode('list', null, preKeys.map(xmppPreKey)),
+                    xmppSignedPreKey(signedPreKey),
+                ],
             );
 
             const lastId = preKeys[preKeys.length - 1];
 
             socketConn.sendFrame(encodeStanza(stanza));
 
-            markKeyAsUploaded(lastId.keyId);
+            await markKeyAsUploaded(lastId.keyId);
+            await putServerHasPreKeys(true);
         };
 
         const sendPassiveIq = async (e: boolean) => {
-            const stanza = new WapNode('iq', {
-                to: S_WHATSAPP_NET,
-                xmlns: 'passive',
-                type: 'set',
-                id: generateId(),
-            }, [
-              new WapNode(e ? 'passive' : 'active', null)
-            ]);
+            const stanza = new WapNode(
+                'iq',
+                {
+                    to: S_WHATSAPP_NET,
+                    xmlns: 'passive',
+                    type: 'set',
+                    id: generateId(),
+                },
+                [new WapNode(e ? 'passive' : 'active', null)],
+            );
 
             socketConn.sendFrame(encodeStanza(stanza));
         };
@@ -244,7 +265,11 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
         const parseSuccess = async (node: WapNode) => {
             console.log('success');
-            await uploadPreKeys();
+            const serverHasPreKeys = await getServerHasPreKeys();
+            if (!serverHasPreKeys) {
+                await uploadPreKeys();
+            }
+
             await sendPassiveIq(false);
         };
 

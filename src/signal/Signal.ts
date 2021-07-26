@@ -109,3 +109,11 @@ export const markKeyAsUploaded = async (id: number) => {
 
     await putMeta('firstUnuploadedId', firstUnuploadedId ? Math.max(firstUnuploadedId, id + 1) : id + 1);
 };
+
+export const putServerHasPreKeys = async (flag: boolean) => {
+    await putMeta('serverHasPreKeys', flag);
+};
+
+export const getServerHasPreKeys = async () => {
+    return getMeta<boolean>('serverHasPreKeys');
+};
