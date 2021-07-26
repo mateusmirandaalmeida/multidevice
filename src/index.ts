@@ -263,6 +263,17 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
             }
         };
 
+        const parseStreamFailure = async (node: WapNode) => {
+            const reason = node.attrs.reason ?? null;
+
+            if (reason == '401') {
+                // disconnected by cell phone
+                console.log('restarting socket');
+                storageService.clearAll();
+                socketConn.restart();
+            }
+        };
+
         const parseSuccess = async (node: WapNode) => {
             console.log('success');
             const serverHasPreKeys = await getServerHasPreKeys();
@@ -401,6 +412,10 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
 
             if (tag == 'success') {
                 await parseSuccess(stanza);
+            }
+
+            if (tag == 'failure') {
+                await parseStreamFailure(stanza);
             }
         };
 
