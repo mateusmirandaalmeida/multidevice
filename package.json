@@ -15,9 +15,10 @@
     "typescript": "^4.3.5"
   },
   "dependencies": {
+    "@types/bytebuffer": "^5.0.42",
     "@wireapp/proteus": "^9.12.1",
+    "bytebuffer": "^5.0.1",
     "curve25519-js": "^0.0.4",
-    "curve25519-n": "^1.5.0",
     "libsignal": "^2.0.1",
     "qrcode-terminal": "^0.12.0",
     "ws": "^7.5.3",

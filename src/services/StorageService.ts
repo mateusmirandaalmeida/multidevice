@@ -68,6 +68,15 @@ class StorageService {
         for (const key in data) {
             if (Object.prototype.hasOwnProperty.call(data, key)) {
                 let element = data[key];
+                if (Array.isArray(element)) {
+                    const temp = [];
+                    for (const obj of element) {
+                        temp.push(obj?.type ? this.castElement(obj) : obj);
+                    }
+
+                    out[key] = temp;
+                    continue;
+                }
 
                 if (element?.type) {
                     element = this.castElement(element);

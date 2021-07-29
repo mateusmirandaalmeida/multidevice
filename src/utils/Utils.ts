@@ -51,6 +51,16 @@ export const BIG_ENDIAN_CONTENT = (e: number, t=4) => {
   return a
 }
 
+export const MESSAGE_TYPE = {
+  CHAT: "chat",
+  GROUP: "group",
+  PEER_BROADCAST: "peer_broadcast",
+  OTHER_BROADCAST: "other_broadcast",
+  DIRECT_PEER_STATUS: "direct_peer_status",
+  OTHER_STATUS: "other_status"
+};
+
+export const OFFICIAL_BIZ_WID = '16505361212@c.us';
 
 export const xmppSignedPreKey = (key: SignedKeyPair) => {
   return new WapNode('skey', null, [

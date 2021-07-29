@@ -11,6 +11,7 @@ import {
     KEY_BUNDLE_TYPE,
     xmppPreKey,
     xmppSignedPreKey,
+    MESSAGE_TYPE,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -32,7 +33,9 @@ import { S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
 import { storageService } from './services/StorageService';
 import { hmacSha256 } from './utils/HKDF';
-import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded, putServerHasPreKeys, getServerHasPreKeys } from './signal/Signal';
+import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded, putServerHasPreKeys, getServerHasPreKeys, decryptSignalProto } from './signal/Signal';
+import { MessageSpec } from './proto/specs/Message';
+
 (async () => {
     storageService.init('./storage.json');
 
@@ -383,6 +386,276 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
             await storageService.save('me', wid);
         };
 
+        const parseMessage = async (node: WapNode) => {
+            const encMap: any[] = node.mapChildrenWithTag('enc', (node: WapNode) => {
+                return {
+                    e2eType: node.attrs.type,
+                    mediaType: node.attrs?.mediatype ?? null,
+                    ciphertext: node.contentBytes(),
+                    retryCount: node.attrs?.count ?? 0,
+                };
+            });
+
+            const deviceIdentity = node.maybeChild('device-identity');
+            const deviceIdentityBytes = deviceIdentity ? deviceIdentity.contentBytes() : null;
+
+            const msgInfo = ((node: WapNode, encMap: any[]) => {
+                let ephSettings: {
+                    [key: string]: string;
+                } = {};
+                let participants: WapJid[] = [];
+
+                let info: any = {
+                    externalId: node.attrs.id,
+                    ts: node.attrs.t,
+                    edit: node.attrs?.edit ?? -1,
+                    isHsm: !!node.attrs?.hsm,
+                    count: node.attrs?.count ?? null,
+                    pushname: node.attrs?.notify ?? null,
+                    category: node.attrs?.category ?? null,
+                    offline: node.attrs?.offline ?? null,
+                };
+
+                const from: WapJid = node.attrs.from;
+                const recipient: WapJid = node.attrs?.recipient ?? null;
+                const participant: WapJid = node.attrs?.participant ?? null;
+                const isDirect = encMap.every((enc) => enc.e2eType != 'skmsg');
+                const isRetry = encMap.some((enc) => enc.retryCount > 0);
+
+                console.log({
+                    from,
+                    recipient,
+                    participants,
+                    isDirect,
+                    isRetry,
+                });
+
+                const participantsNode = node.maybeChild('participants');
+                if (participantsNode) {
+                    node.forEachChildWithTag('to', (node: WapNode) => {
+                        const jid: WapJid = node.attrs?.jid;
+                        const ephSetting = node.attrs?.eph_setting ?? null;
+
+                        participants.push(node.attrs.jid);
+
+                        if (ephSetting) {
+                            ephSettings[jid.toString()] = ephSetting;
+                        }
+                    });
+                }
+
+                const isPeer = (jid: WapJid) => {
+                    const me = storageService.get<WapJid>('me');
+
+                    return jid.equals(me);
+                };
+
+                if (from.isUser()) {
+                    if (recipient) {
+                        if (!isPeer(from)) {
+                            //throw new Error('recipient on non peer chat message');
+                        }
+
+                        return {
+                            ...info,
+                            type: MESSAGE_TYPE.CHAT,
+                            chat: recipient,
+                            author: from,
+                        };
+                    }
+
+                    return {
+                        type: MESSAGE_TYPE.CHAT,
+                        chat: from,
+                        author: from,
+                    };
+                }
+
+                if (from.isGroup()) {
+                    if (!participant) {
+                        throw new Error('group message with no participant');
+                    }
+
+                    return {
+                        ...info,
+                        type: MESSAGE_TYPE.GROUP,
+                        chat: from,
+                        author: participant,
+                        isDirect,
+                    };
+                }
+
+                if (from.isBroadcast() && !from.isStatusV3()) {
+                    if (!participant) {
+                        throw new Error('broadcast message with no participant');
+                    }
+
+                    if (isPeer(participant)) {
+                        if (participants.length == 0) {
+                            if (!isRetry) {
+                                throw new Error('peer broadcast message with no participants node');
+                            }
+
+                            participants = [];
+                        }
+
+                        return {
+                            ...info,
+                            type: MESSAGE_TYPE.PEER_BROADCAST,
+                            chat: from,
+                            author: participant,
+                            isDirect,
+                            bclParticipants: participants,
+                            bclHashValidated: false,
+                            bclEphSettings: ephSettings,
+                        };
+                    }
+
+                    return {
+                        ...info,
+                        type: MESSAGE_TYPE.OTHER_BROADCAST,
+                        chat: from,
+                        author: participant,
+                        isDirect,
+                        ephSetting: node.attrs?.eph_setting ?? null,
+                    };
+                }
+
+                if (from.isBroadcast() && from.isStatusV3()) {
+                    if (!participant) {
+                        throw new Error('status message with no participant');
+                    }
+
+                    if (isPeer(participant) && isDirect) {
+                        if (participants.length == 0) {
+                            return {
+                                ...info,
+                                type: MESSAGE_TYPE.DIRECT_PEER_STATUS,
+                                chat: from,
+                                author: participant,
+                                isDirect,
+                            };
+                        }
+
+                        return {
+                            ...info,
+                            type: MESSAGE_TYPE.DIRECT_PEER_STATUS,
+                            chat: from,
+                            author: participant,
+                            bclParticipants: participants,
+                            bclHashValidated: false,
+                        };
+                    }
+
+                    return {
+                        ...info,
+                        type: MESSAGE_TYPE.OTHER_STATUS,
+                        chat: from,
+                        author: participant,
+                        isDirect,
+                    };
+                }
+
+                throw new Error('Unrecognized message type');
+            })(node, encMap);
+
+            const msgMeta = ((node: WapNode, encMap: any[]) => {
+                const isUnavailable = node.hasChild('unavailable');
+                if (!isUnavailable && encMap.length == 0) {
+                    throw new Error('incomingMsgParser: to have enc node children');
+                }
+
+                return {
+                    isUnavailable,
+                    type: node.attrs.type,
+                    rawTs: node.attrs.t,
+                    urlNumber: node.hasChild('url_number'),
+                    urlText: node.hasChild('url_text'),
+                };
+            })(node, encMap);
+
+            const bizInfo = ((node: WapNode) => {
+                const verifiedNameCert = node.hasChild('verified_name') ? node.child('verified_name').contentBytes() : null;
+                const verifiedLevel = node.attrs?.verified_level ?? null;
+                const verifiedNameSerial = node.attrs?.verified_name ?? -1;
+                const biz = node.maybeChild('biz');
+                let privacyMode = null;
+
+                if (biz != null) {
+                    const actualActors = biz.attrs?.actual_actors ?? null;
+                    const hostStorage = biz.attrs?.host_storage ?? null;
+                    const privacyModeTs = biz.attrs?.privacy_mode_ts ?? null;
+
+                    if (actualActors && hostStorage && privacyModeTs) {
+                        privacyMode = {
+                            actualActors,
+                            hostStorage,
+                            privacyModeTs,
+                        };
+                    }
+                }
+
+                return {
+                    verifiedNameCert,
+                    verifiedLevel: verifiedLevel,
+                    verifiedNameSerial,
+                    privacyMode,
+                };
+            })(node);
+
+            const paymentInfo = null; // TODO PAYMENT INFO
+
+            /*console.log({
+                encs: encMap,
+                msgInfo,
+                msgMeta,
+                bizInfo,
+                paymentInfo,
+                deviceIdentity: deviceIdentityBytes,
+            });*/
+
+            const getFrom = (msg: any) => (msg.type == MESSAGE_TYPE.CHAT ? msg.author : msg.chat);
+
+            const unpad = (e) => {
+                const t = new Uint8Array(e);
+                if (0 === t.length) {
+                    throw new Error('unpadPkcs7 given empty bytes');
+                }
+
+                var r = t[t.length - 1];
+                if (r > t.length) {
+                    throw new Error(`unpad given ${t.length} bytes, but pad is ${r}`);
+                }
+
+                return new Uint8Array(t.buffer, t.byteOffset, t.length - r);
+            };
+
+            for (const enc of encMap) {
+                switch (enc.e2eType) {
+                    case 'skmsg':
+                        console.log('skmsg');
+                        break;
+                    case 'pkmsg':
+                    case 'msg':
+                        const s = getFrom(msgInfo);
+                        const n = s.isUser() ? s : msgInfo.author;
+
+                        const result = await decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
+
+                        const messageProto = decodeProto(MessageSpec, unpad(result));
+
+                        console.log('decryptMessage', {
+                            ...msgInfo,
+                            ...messageProto,
+                        });
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+        };
+
         const handleStanza = async (stanza: WapNode) => {
             if (!(stanza instanceof WapNode)) {
                 return null;
@@ -417,6 +690,10 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
             if (tag == 'failure') {
                 await parseStreamFailure(stanza);
             }
+
+            if (tag == 'message') {
+                await parseMessage(stanza);
+            }
         };
 
         const PING_INTERVAL = 1e4 * Math.random() + 2e4;
@@ -450,7 +727,7 @@ import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey,
             const stanza = decodeStanza(data);
 
             await handleStanza(stanza);
-            console.log(stanza);
+            //console.log(stanza);
         });
     };
 })();

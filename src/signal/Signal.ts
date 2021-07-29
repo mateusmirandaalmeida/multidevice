@@ -1,6 +1,9 @@
 import { ProtocolAddress } from './ProtocolAddress';
 import { storageService } from './../services/StorageService';
 import { generatePreKey, Key, PreKey } from './../utils/Curve';
+import libsignal from 'libsignal';
+import { storageSignal } from './StorageSignal';
+import { WapJid } from './../proto/WapJid';
 
 interface IIdentity {
     identifier: ProtocolAddress;
@@ -116,4 +119,39 @@ export const putServerHasPreKeys = async (flag: boolean) => {
 
 export const getServerHasPreKeys = async () => {
     return getMeta<boolean>('serverHasPreKeys');
+};
+
+export const createLibSignalAddress = (e: WapJid) => {
+    if (!(e.isUser() || e.isServer() || e.isPSA())) throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+
+    return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
+};
+
+export const decryptSignalProto = async (e, t, r) => {
+    try {
+        const session = new libsignal.SessionCipher(storageSignal, createLibSignalAddress(e));
+
+        switch (t) {
+            case 'pkmsg':
+                return session.decryptPreKeyWhisperMessage(r);
+            case 'msg':
+                return session.decryptWhisperMessage(r);
+            default:
+                return Promise.reject(`decryptSignalProto: Received unsupported msg type ${t}`);
+        }
+    } catch (err) {
+        if (e && 'call_failure' === e.reason && e.value && 'number' == typeof e.value.result) {
+            console.log(`decryptSignalProto error code ${e.value.result}`);
+        } else {
+            if (e && 'MessageCounterError' === e.name) {
+                //return Promise.reject(new i.SignalMessageCounterError(e));
+                console.log('SignalMessageCounterError', e);
+                throw err;
+            } 
+
+            console.log(`decryptSignalProto js error ${e}`);
+        }
+
+        throw err;
+    }
 };
