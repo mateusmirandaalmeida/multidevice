@@ -20,6 +20,7 @@
     "bytebuffer": "^5.0.1",
     "curve25519-js": "^0.0.4",
     "libsignal": "^2.0.1",
+    "protobufjs": "^6.11.2",
     "qrcode-terminal": "^0.12.0",
     "ws": "^7.5.3",
     "zlib": "^1.0.5"

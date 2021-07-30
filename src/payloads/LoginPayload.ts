@@ -1,6 +1,5 @@
-import { encodeProto } from "../proto/EncodeProto";
-import { ClientPayloadSpec } from "../proto/ProtoSpec";
 import { WapJid } from "../proto/WapJid";
+import { proto as WAProto } from './../proto/WAMessage';
 
 export const generatePayloadLogin = (user: WapJid) => {
   const payload = {
@@ -33,5 +32,5 @@ export const generatePayloadLogin = (user: WapJid) => {
 
   console.log('login payload', payload);
 
-  return encodeProto(ClientPayloadSpec, payload).readByteArray();
+  return WAProto.ClientPayload.encode(payload).finish();
 };

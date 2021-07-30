@@ -1,7 +1,6 @@
-import { encodeProto } from "../proto/EncodeProto";
-import { ClientPayloadSpec, CompanionPropsSpec } from "../proto/ProtoSpec";
 import { KeyPair, SignedKeyPair } from "../utils/Curve";
 import { intToBytes, VERSION_ENCODED } from "../utils/Utils";
+import { proto as WAProto } from './../proto/WAMessage';
 
 export const generatePayloadRegister = (
   registrationId: number,
@@ -21,10 +20,7 @@ export const generatePayloadRegister = (
     requireFullSync: false,
   };
 
-  const companionProto = encodeProto(
-    CompanionPropsSpec,
-    companion
-  ).readByteArray();
+  const companionProto = WAProto.CompanionProps.encode(companion).finish();
 
   const registerPayload = {
     connectReason: 1,
@@ -61,15 +57,6 @@ export const generatePayloadRegister = (
       webSubPlatform: 0,
     },
   };
-
-  /*console.log('registerPayload.regData.buildHash', registerPayload.regData.buildHash);
-  console.log('registerPayload.regData.companionProps', registerPayload.regData.companionProps);
-  console.log('registerPayload.regData.eRegid', registerPayload.regData.eRegid);
-  console.log('registerPayload.regData.eKeytype', registerPayload.regData.eKeytype);
-  console.log('registerPayload.regData.eIdent', registerPayload.regData.eIdent);
-  console.log('registerPayload.regData.eSkeyId', registerPayload.regData.eSkeyId);
-  console.log('registerPayload.regData.eSkeyVal', registerPayload.regData.eSkeyVal);
-  console.log('registerPayload.regData.eSkeySig', registerPayload.regData.eSkeySig);*/
-
-  return encodeProto(ClientPayloadSpec, registerPayload).readByteArray();
+ 
+  return WAProto.ClientPayload.encode(registerPayload).finish();
 };
