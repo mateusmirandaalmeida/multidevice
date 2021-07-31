@@ -16,10 +16,7 @@ import {
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
-import { encodeProto } from './proto/EncodeProto';
-import { decodeProto } from './proto/DecodeProto';
 import { toLowerCaseHex } from './utils/HexHelper';
-import { ADVDeviceIdentitySpec, ADVSignedDeviceIdentityHMACSpec, ADVSignedDeviceIdentitySpec, DetailsSpec, HandshakeMessageSpec, NoiseCertificateSpec } from './proto/ProtoSpec';
 
 import zlib from 'zlib';
 import { generatePayloadRegister } from './payloads/RegisterPayload';
@@ -34,7 +31,8 @@ import { generatePayloadLogin } from './payloads/LoginPayload';
 import { storageService } from './services/StorageService';
 import { hmacSha256 } from './utils/HKDF';
 import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded, putServerHasPreKeys, getServerHasPreKeys, decryptSignalProto } from './signal/Signal';
-import { MessageSpec } from './proto/specs/Message';
+
+import { proto as WAProto } from './proto/WAMessage';
 
 (async () => {
     storageService.init('./storage.json');
@@ -57,12 +55,11 @@ import { MessageSpec } from './proto/specs/Message';
             },
         };
 
-        const serverHelloEnc = await noise.sendAndReceive(encodeProto(HandshakeMessageSpec, data).readByteArray());
+        const serverHelloEnc = await noise.sendAndReceive(WAProto.HandshakeMessage.encode(data).finish());
 
         console.log('received server hello', toLowerCaseHex(serverHelloEnc));
 
-        const { serverHello } = await decodeProto(HandshakeMessageSpec, serverHelloEnc);
-
+        const { serverHello } = WAProto.HandshakeMessage.decode(serverHelloEnc);
         if (!serverHello) {
             console.log('ServerHello payload error');
             return;
@@ -75,7 +72,7 @@ import { MessageSpec } from './proto/specs/Message';
         }
 
         noise.authenticate(serverEphemeral);
-        noise.mixIntoKey(sharedKey(new Uint8Array(serverEphemeral), ephemeralKeyPair.privKey));
+        noise.mixIntoKey(sharedKey(serverEphemeral, ephemeralKeyPair.privKey));
 
         const staticDecoded = await noise.decrypt(serverStaticCiphertext);
 
@@ -83,13 +80,13 @@ import { MessageSpec } from './proto/specs/Message';
 
         const certDecoded = await noise.decrypt(certificateCiphertext);
 
-        const { details: certDetails, signature: certSignature } = await decodeProto(NoiseCertificateSpec, certDecoded);
+        const { details: certDetails, signature: certSignature } = WAProto.NoiseCertificate.decode(new Uint8Array(certDecoded));
         if (!certDetails || !certSignature) {
             console.log('certProto wrong');
             return;
         }
 
-        const { issuer: certIssuer, key: certKey } = await decodeProto(DetailsSpec, certDetails);
+        const { issuer: certIssuer, key: certKey } = WAProto.Details.decode(certDetails);
         if (certIssuer != CERT_ISSUER || !certKey) {
             console.log('invalid issuer');
             return;
@@ -122,12 +119,12 @@ import { MessageSpec } from './proto/specs/Message';
         const payloadEnc = await noise.encrypt(payload);
 
         noise.send(
-            encodeProto(HandshakeMessageSpec, {
+            WAProto.HandshakeMessage.encode({
                 clientFinish: {
-                    static: keyEnc,
-                    payload: payloadEnc,
+                    static: new Uint8Array(keyEnc),
+                    payload: new Uint8Array(payloadEnc),
                 },
-            }).readByteArray(),
+            }).finish()
         );
 
         const socketConn = await noise.finish();
@@ -295,7 +292,7 @@ import { MessageSpec } from './proto/specs/Message';
             const businessName = pair.getContentByTag('biz')?.attrs?.name ?? null;
             const wid = pair.getContentByTag('device')?.attrs?.jid ?? null;
 
-            const { details, hmac } = decodeProto(ADVSignedDeviceIdentityHMACSpec, deviceIdentityBytes);
+            const { details, hmac } = WAProto.ADVSignedDeviceIdentityHMAC.decode(deviceIdentityBytes);
 
             if (!details || !hmac) {
                 console.log('invalid device details or hmac');
@@ -333,8 +330,7 @@ import { MessageSpec } from './proto/specs/Message';
                 return;
             }
 
-            const account = decodeProto(ADVSignedDeviceIdentitySpec, details);
-            console.log(account);
+            const account = WAProto.ADVSignedDeviceIdentity.decode(details);
             const { accountSignatureKey, accountSignature } = account;
             if (!accountSignatureKey || !accountSignature) {
                 console.log('invalid accountSignature or accountSignatureKey');
@@ -353,11 +349,12 @@ import { MessageSpec } from './proto/specs/Message';
 
             await putIdentity(createSignalAddress(wid.toString(), 0), new Key(toSignalCurvePubKey(accountSignatureKey)));
 
-            const keyIndex = decodeProto(ADVDeviceIdentitySpec, account.details).keyIndex;
+            const keyIndex = WAProto.ADVDeviceIdentity.decode(account.details).keyIndex;
 
-            account.accountSignatureKey = undefined;
+            const acc = account.toJSON();
+            acc.accountSignatureKey = undefined;
 
-            const accountEnc = encodeProto(ADVSignedDeviceIdentitySpec, account).readByteArray();
+            const accountEnc = WAProto.ADVSignedDeviceIdentity.encode(acc).finish();
 
             const stanza = encodeStanza(
                 new WapNode(
@@ -642,7 +639,7 @@ import { MessageSpec } from './proto/specs/Message';
 
                         const result = await decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
 
-                        const messageProto = decodeProto(MessageSpec, unpad(result));
+                        const messageProto = WAProto.Message.decode(unpad(result));
 
                         console.log('decryptMessage', {
                             ...msgInfo,
@@ -727,7 +724,7 @@ import { MessageSpec } from './proto/specs/Message';
             const stanza = decodeStanza(data);
 
             await handleStanza(stanza);
-            //console.log(stanza);
+            console.log(stanza);
         });
     };
 })();
