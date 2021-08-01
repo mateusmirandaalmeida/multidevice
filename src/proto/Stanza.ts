@@ -92,30 +92,6 @@ function R(node: any, data: Binary) {
     data.writeUint8(r + 1);
 }
 
-function aM(node, data) {
-    if (node?.tag == undefined) {
-        data.writeUint8(248);
-        data.writeUint8(0);
-
-        return;
-    }
-
-    var r = 1;
-    node.attrs && (r += 2 * Object.keys(node.attrs).length),
-        node.content && r++,
-        r < 256 ? (data.writeUint8(248), data.writeUint8(r)) : r < 65536 && (data.writeUint8(249), data.writeUint16(r)),
-        O(node.tag, data),
-        node.attrs &&
-            Object.keys(node.attrs).forEach((r) => {
-                R(r, data), O(node.attrs[r], data);
-            });
-    var a = node.content;
-    if (Array.isArray(a)) {
-        a.length < 256 ? (data.writeUint8(248), data.writeUint8(a.length)) : a.length < 65536 && (data.writeUint8(249), data.writeUint16(a.length));
-        for (var i = 0; i < a.length; i++) M(a[i], data);
-    } else a && O(a, data);
-}
-
 function M(node: any, data: Binary) {
     if (node?.tag == undefined) {
         data.writeUint8(248);
@@ -332,14 +308,6 @@ export const decodeStanza = (data: Binary) => {
 };
 
 export const buildWapNode = (e: any) => {
-    /*var t = e.content;
-  return (
-    Array.isArray(t)
-      ? (t = t.map(P))
-      : "string" == typeof t && (t = i.Binary.build(t).readByteArray()),
-    new T(e.tag, e.attrs || S, t)
-  );*/
-
     let content: any = e.content;
     if (Array.isArray(e.content)) {
         content = e.content.map(buildWapNode);

@@ -1,58 +1,100 @@
-import * as Crypto from "crypto";
-import { Binary } from "./../proto/Binary";
+import * as Crypto from 'crypto';
+import { Binary } from './../proto/Binary';
 
 const crypto = Crypto.webcrypto as any;
 
-var i = new Uint8Array(32),
-  n = {
-    name: "HMAC",
-    hash: "SHA-256",
-  };
+export const expand = async (rawKey: Uint8Array, info: string, size: number): Promise<Buffer> => {
+    if (size < 0 || size > 8160) {
+        throw new Error(`expand given bad length ${size}`);
+    }
 
-function s(e) {
-  return crypto.subtle.importKey("raw", e, n, !1, ["sign"]);
-}
-function o(e, t) {
-  return crypto.subtle.sign(n, e, t);
-}
-function l(e, t) {
-  return s(e || i).then((e) => o(e, t));
-}
-function d(e, t, r) {
-  if (r < 0 || r > 8160)
-    return Promise.reject(new Error(`HKDF::expand given bad length ${r}`));
-  for (
-    var i,
-      n = Math.ceil(r / 32),
-      l = Binary.build(t).readByteArray(),
-      d = new Binary(),
-      u = s(e).then((e) => ((i = e), new Uint8Array(0))),
-      c = function (e) {
-        u = u
-          .then((t) => o(i, Binary.build(t, l, e).readByteArray()))
-          .then((e) => {
-            var t = new Uint8Array(e);
-            return d.writeByteArray(t), t;
-          });
-      },
-      p = 1;
-    p <= n;
-    p++
-  )
-    c(p);
-  return u.then(() => d.readBuffer(r));
-}
+    const block = Math.ceil(size / 32);
+    const bytes = Binary.build(info).readByteArray();
+    const data = new Binary();
 
-export const hmacSha256 = function (e, t) {
-  return s(e).then((e) => o(e, t));
+    const key = await crypto.subtle.importKey(
+        'raw',
+        rawKey,
+        {
+            name: 'HMAC',
+            hash: 'SHA-256',
+        },
+        false,
+        ['sign'],
+    );
+
+    let lastSig = new Uint8Array(0);
+    for (let index = 1; index <= block; index++) {
+        const signature = await crypto.subtle.sign(
+            {
+                name: 'HMAC',
+                hash: 'SHA-256',
+            },
+            key,
+            Binary.build(lastSig, bytes, index).readByteArray(),
+        );
+
+        const currSig = new Uint8Array(signature);
+        data.writeByteArray(currSig);
+
+        lastSig = currSig;
+    }
+
+    return data.readBuffer(size);
 };
 
-export const extract = l;
-export const expand = d;
-export const extractAndExpand = function (e, t, r) {
-  return l(null, e).then((e) => d(new Uint8Array(e), t, r));
+export const hmacSha256 = async (salt: ArrayBuffer, data: Uint8Array) => {
+    const key = await crypto.subtle.importKey(
+        'raw',
+        salt,
+        {
+            name: 'HMAC',
+            hash: 'SHA-256',
+        },
+        false,
+        ['sign'],
+    );
+
+    return crypto.subtle.sign(
+        {
+            name: 'HMAC',
+            hash: 'SHA-256',
+        },
+        key,
+        data,
+    );
 };
 
-export const extractWithSaltAndExpand = function (e, t, r, a) {
-  return l(t, e).then((e) => d(new Uint8Array(e), r, a));
+export const extract = async (salt: ArrayBuffer, data: Uint8Array) => {
+    const keyData = salt || new Uint8Array(32);
+
+    const key = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        {
+            name: 'HMAC',
+            hash: 'SHA-256',
+        },
+        false,
+        ['sign'],
+    );
+
+    return crypto.subtle.sign(
+        {
+            name: 'HMAC',
+            hash: 'SHA-256',
+        },
+        key,
+        data,
+    );
+};
+
+export const extractAndExpand = async (data: Uint8Array, info: string, size: number) => {
+  const key = await extract(null, data);
+  return expand(new Uint8Array(key), info, size);
+};
+
+export const extractWithSaltAndExpand = async (data: Uint8Array, salt: ArrayBuffer, info: string, size: number) => {
+  const key = await extract(salt, data);
+  return expand(new Uint8Array(key), info, size);
 };
