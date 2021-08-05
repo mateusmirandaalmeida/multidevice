@@ -1,14 +1,4 @@
-import {
-    randomBytes,
-    areBuffersEqual,
-    HEADER,
-    CERT_ISSUER,
-    BIG_ENDIAN_CONTENT,
-    KEY_BUNDLE_TYPE,
-    xmppPreKey,
-    xmppSignedPreKey,
-    MESSAGE_TYPE,
-} from './utils/Utils';
+import { randomBytes, areBuffersEqual, HEADER, CERT_ISSUER, BIG_ENDIAN_CONTENT, KEY_BUNDLE_TYPE, xmppPreKey, xmppSignedPreKey, MESSAGE_TYPE } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
@@ -32,7 +22,7 @@ import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
 
-const sessions = {}
+const sessions = {};
 
 interface Props {
     sessionName: string;
@@ -69,9 +59,9 @@ export class WaClient {
 
     constructor({ sessionName, onSocketClose }: Props) {
         if (sessions[sessionName]) {
-            throw new Error(`SessionName "${sessionName}" already exists`)
+            throw new Error(`SessionName "${sessionName}" already exists`);
         }
-        sessions[sessionName] = this
+        sessions[sessionName] = this;
         this.sessionName = sessionName;
         this.onSocketClose = onSocketClose;
         this.storageService = new StorageService('./sessions');
@@ -163,7 +153,6 @@ export class WaClient {
         this.advSecretKey = await this.storageService.getOrSave<string>('advSecretKey', () => encodeB64(new Uint8Array(randomBytes(32))));
         this.socketConn.onClose = this.onNoiseSocketClose;
         this.socketConn.setOnFrame(this.onNoiseNewFrame);
-       
     };
 
     private onNoiseSocketClose = () => {
@@ -251,7 +240,6 @@ export class WaClient {
     };
 
     private parsePairDevice = async (node: WapNode) => {
-        console.log('1')
         //var e = 6 === _.length ? 6e4 : 2e4
         const refs = node.content[0].content.map((node: WapNode) => {
             return node.contentString();
@@ -738,13 +726,9 @@ export class WaClient {
         console.log(stanza);
     };
 
-    private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {
-            
-    }
+    private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {};
 
-    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
-        
-    }
+    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {};
 
     private createKeepAlive = () => {
         this.keepAliveTimer = setInterval(() => {
@@ -773,8 +757,8 @@ export class WaClient {
     };
 
     destroy() {
-        this.socketConn.close()
-        this.socket.close()
+        this.socketConn.close();
+        this.socket.close();
+        delete sessions[this.sessionName]
     }
-
 }
