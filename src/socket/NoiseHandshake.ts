@@ -1,155 +1,136 @@
-import { Binary } from "../proto/Binary";
-import { FrameSocket } from "./FrameSocket";
-import { Resolvable } from "../utils/Resolvable";
-import * as Crypto from "crypto";
-import { extract, expand } from "../utils/HKDF";
-import { NoiseSocket } from "./NoiseSocket";
+import { Binary } from '../proto/Binary';
+import { FrameSocket } from './FrameSocket';
+import { Resolvable } from '../utils/Resolvable';
+import * as Crypto from 'crypto';
+import { extractWithSaltAndExpand } from '../utils/HKDF';
+import { NoiseSocket } from './NoiseSocket';
 
 const crypto = Crypto.webcrypto as any;
 
-//var o = r(1136); // noisesocket
-//var l = r(76770); // resolvable
-var d = Promise.reject("UNINITIALIZED HANDSHAKE");
-var u = new Uint8Array(0);
-
-d.catch(() => {});
-
-function c(e) {
-  var t = new ArrayBuffer(12);
-  return new DataView(t).setUint32(8, e), new Uint8Array(t);
-}
-
-function p(e, t = ["encrypt", "decrypt"]) {
-  return crypto.subtle.importKey("raw", new Uint8Array(e), "AES-GCM", !1, t);
-}
-
-function f(e, t) {
-  return extract(new Uint8Array(e), t)
-    .then((e) => expand(new Uint8Array(e), "", 64))
-    .then((e) => [e.slice(0, 32), e.slice(32)]);
-}
-
-function h(e) {
-  e.catch(() => {});
-}
-
 export class NoiseHandshake {
-  private hash: any;
-  private salt: any;
-  private cryptoKey: any;
-  private counter = 0;
-  private socket: FrameSocket;
-  private rejectOnClose: any;
+    private hash: Buffer;
+    private salt: Buffer;
+    private cryptoKey: any;
+    private counter = 0;
+    private socket: FrameSocket;
+    private rejectOnClose: Resolvable;
 
-  constructor(socket: FrameSocket) {
-    this.hash = d;
-    this.salt = d;
-    this.cryptoKey = d;
-    this.counter = 0;
-    this.socket = socket;
-    this.rejectOnClose = new Resolvable();
-    socket.onClose = () => {
-      this.rejectOnClose.reject(new Error("NoiseHandshake: SocketClosed"));
-    };
+    constructor(socket: FrameSocket) {
+        this.counter = 0;
+        this.socket = socket;
+        this.rejectOnClose = new Resolvable();
+        socket.onClose = this.handleClose.bind(this);
+    }
 
-    h(this.rejectOnClose.promise);
-  }
+    public async start(pattern: string, header: Uint8Array) {
+        const data = Binary.build(pattern).readBuffer() as Buffer;
+        const hash = data.byteLength == 32 ? data : await crypto.subtle.digest('SHA-256', data);
 
-  start(e, t) {
-    var r = Binary.build(e).readBuffer();
-    var a =
-      32 === r.byteLength
-        ? Promise.resolve(r)
-        : crypto.subtle.digest("SHA-256", r);
+        this.hash = hash;
+        this.salt = hash;
+        this.cryptoKey = await this.importKey(hash);
+        await this.authenticate(header);
+    }
 
-    (this.hash = a),
-      (this.salt = a),
-      (this.cryptoKey = a.then(p)),
-      this.authenticate(t);
-  }
+    public sendAndReceive(data: Uint8Array) {
+        const currSocket = this.socket;
+        const result = new Promise((resolve) => {
+            currSocket.onFrame = (data: any) => {
+                currSocket.onFrame = null;
 
-  sendAndReceive(e) {
-    var t = this.socket;
-    var r = new Promise((r) => {
-      t.onFrame = (e) => {
-        t.onFrame = null;
-        r(e);
-      };
-      t.sendFrame(e);
-    });
+                resolve(data);
+            };
 
-    return this._orRejectOnClose(r);
-  }
+            currSocket.sendFrame(data);
+        });
 
-  send(e) {
-    this.socket.sendFrame(e);
-  }
+        return this.orRejectOnClose(result);
+    }
 
-  authenticate(e) {
-    this.hash = Promise.all([this.hash, e]).then(([e, t]) => {
-      var r = Binary.build(e, t).readByteArray();
-      return crypto.subtle.digest("SHA-256", r);
-    });
-  }
+    public send(data: Uint8Array) {
+        this.socket.sendFrame(data);
+    }
 
-  encrypt(e) {
-    var t = this.counter++,
-      r = Promise.all([this.cryptoKey, this.hash, e]).then(([e, r, a]) =>
-        (function (e, t, r, a) {
-          return crypto.subtle.encrypt(
+    public async authenticate(data: Uint8Array) {
+        this.hash = await crypto.subtle.digest('SHA-256', Binary.build(this.hash, data).readByteArray());
+    }
+
+    public async encrypt(data: Uint8Array) {
+        const currCount = this.counter++;
+
+        const ciphertext = await crypto.subtle.encrypt(
             {
-              name: "AES-GCM",
-              iv: c(t),
-              additionalData: r ? new Uint8Array(r) : u,
+                name: 'AES-GCM',
+                iv: this.generateIv(currCount),
+                additionalData: this.hash ? new Uint8Array(this.hash) : new Uint8Array(0),
             },
-            e,
-            a
-          );
-        })(e, t, r, a)
-      );
-    return this.authenticate(r), this._orRejectOnClose(r);
-  }
+            this.cryptoKey,
+            data,
+        );
 
-  decrypt(e) {
-    var t = this.counter++,
-      r = Promise.all([this.cryptoKey, this.hash]).then(([r, a]) =>
-        (function (e, t, r, a) {
-          return crypto.subtle.decrypt(
+        await this.authenticate(ciphertext);
+
+        return this.orRejectOnClose(ciphertext);
+    }
+
+    public async decrypt(data: Uint8Array) {
+        const currCount = this.counter++;
+
+        const plaintext = await crypto.subtle.decrypt(
             {
-              name: "AES-GCM",
-              iv: c(t),
-              additionalData: r ? new Uint8Array(r) : u,
+                name: 'AES-GCM',
+                iv: this.generateIv(currCount),
+                additionalData: this.hash ? new Uint8Array(this.hash) : new Uint8Array(0),
             },
-            e,
-            a
-          );
-        })(r, t, a, e)
-      );
-    return this.authenticate(e), this._orRejectOnClose(r);
-  }
+            this.cryptoKey,
+            data,
+        );
 
-  finish(): Promise<NoiseSocket> {
-    var e = this.salt
-      .then((e) => f(e, new Uint8Array(0)))
-      .then(([e, t]) => Promise.all([p(e, ["encrypt"]), p(t, ["decrypt"])]))
-      .then(([e, t]) => new NoiseSocket(this.socket, e, t));
-    return this._orRejectOnClose(e);
-  }
+        await this.authenticate(data);
 
-  mixIntoKey(e) {
-    this.counter = 0;
-    var t = Promise.all([this.salt, e]).then(([e, t]) =>
-      f(e, new Uint8Array(t))
-    );
-    (this.salt = t.then((e) => e[0])),
-      (this.cryptoKey = t.then((e) => p(e[1]))),
-      h(this.salt),
-      h(this.cryptoKey);
-  }
+        return this.orRejectOnClose(plaintext);
+    }
 
-  _orRejectOnClose(e) {
-    return Promise.race([e, this.rejectOnClose.promise]).then((e) =>
-      this.rejectOnClose.resolveWasCalled() ? this.rejectOnClose.promise : e
-    );
-  }
+    public async finish(): Promise<NoiseSocket> {
+        const [write, read] = await this.extractAndExpand(this.salt, new Uint8Array(0));
+
+        const writeKey = await this.importKey(write, ['encrypt']);
+        const readKey = await this.importKey(read, ['decrypt']);
+
+        const socket = new NoiseSocket(this.socket, writeKey, readKey);
+
+        return this.orRejectOnClose(socket);
+    }
+
+    public async mixIntoKey(data: ArrayBuffer) {
+        this.counter = 0;
+        const [write, read] = await this.extractAndExpand(this.salt, new Uint8Array(data));
+        this.salt = write;
+        this.cryptoKey = await this.importKey(read);
+    }
+
+    private async orRejectOnClose(data: any) {
+        return Promise.race([data, this.rejectOnClose.promise]).then((e) => (this.rejectOnClose.resolveWasCalled() ? this.rejectOnClose.promise : e));
+    }
+
+    private async importKey(key: Buffer, usages = ['encrypt', 'decrypt']) {
+        return crypto.subtle.importKey('raw', new Uint8Array(key), 'AES-GCM', false, usages);
+    }
+
+    private generateIv(count: number) {
+        const iv = new ArrayBuffer(12);
+        new DataView(iv).setUint32(8, count);
+
+        return new Uint8Array(iv);
+    }
+
+    private async extractAndExpand(salt: ArrayBuffer, data: Uint8Array) {
+        const key = await extractWithSaltAndExpand(data, new Uint8Array(salt), '', 64);
+
+        return [key.slice(0, 32), key.slice(32)];
+    }
+
+    private handleClose() {
+        this.rejectOnClose.reject(new Error('NoiseHandshake: SocketClosed'));
+    }
 }

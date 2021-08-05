@@ -25,10 +25,11 @@ export class WapJid {
             user,
             device: device ?? 0,
             agent: agent ?? 0,
+            server: 's.whatsapp.net'
         });
     }
 
-    static create(user: string, server: string) {
+    static create(user: string, server?: string) {
         return new WapJid({
             type: WapJid.JID,
             user,
@@ -98,7 +99,7 @@ export class WapJid {
     }
 
     equals(jid: WapJid) {
-        return jid instanceof WapJid && this.toString() === jid.toString();
+        return jid instanceof WapJid && this.getUser() === jid.getUser();
     }
 
     static parse(data: any) {

@@ -32,7 +32,7 @@ import { storageService } from './services/StorageService';
 import { hmacSha256 } from './utils/HKDF';
 import { createSignalAddress, getOrGenPreKeys, putIdentity, toSignalCurvePubKey, markKeyAsUploaded, putServerHasPreKeys, getServerHasPreKeys, decryptSignalProto } from './signal/Signal';
 
-import { proto as WAProto } from './proto/WAMessage';
+import { proto, proto as WAProto } from './proto/WAMessage';
 
 (async () => {
     storageService.init('./storage.json');
@@ -46,8 +46,8 @@ import { proto as WAProto } from './proto/WAMessage';
         console.log('conn open');
         const frame = new FrameSocket(socket, HEADER);
         const noise = new NoiseHandshake(frame);
-        noise.start('Noise_XX_25519_AESGCM_SHA256\0\0\0\0', HEADER);
-        noise.authenticate(ephemeralKeyPair.pubKey);
+        await noise.start('Noise_XX_25519_AESGCM_SHA256\0\0\0\0', HEADER);
+        await noise.authenticate(ephemeralKeyPair.pubKey);
 
         const data = {
             clientHello: {
@@ -71,12 +71,12 @@ import { proto as WAProto } from './proto/WAMessage';
             throw new Error('Missing server Ephemeral');
         }
 
-        noise.authenticate(serverEphemeral);
-        noise.mixIntoKey(sharedKey(serverEphemeral, ephemeralKeyPair.privKey));
+        await noise.authenticate(serverEphemeral);
+        await noise.mixIntoKey(sharedKey(serverEphemeral, ephemeralKeyPair.privKey));
 
         const staticDecoded = await noise.decrypt(serverStaticCiphertext);
 
-        noise.mixIntoKey(sharedKey(new Uint8Array(staticDecoded), ephemeralKeyPair.privKey));
+        await noise.mixIntoKey(sharedKey(new Uint8Array(staticDecoded), ephemeralKeyPair.privKey));
 
         const certDecoded = await noise.decrypt(certificateCiphertext);
 
@@ -105,7 +105,7 @@ import { proto as WAProto } from './proto/WAMessage';
 
         const keyEnc = await noise.encrypt(new Uint8Array(noiseKey.pubKey));
 
-        noise.mixIntoKey(sharedKey(new Uint8Array(serverEphemeral), new Uint8Array(noiseKey.privKey)));
+        await noise.mixIntoKey(sharedKey(new Uint8Array(serverEphemeral), new Uint8Array(noiseKey.privKey)));
 
         const signedIdentityKey = await storageService.getOrSave<KeyPair>('signedIdentityKey', () => generateIdentityKeyPair());
         const signedPreKey = await storageService.getOrSave<SignedKeyPair>('signedPreKey', () => generateSignedPreKey(signedIdentityKey, 1));
@@ -322,7 +322,7 @@ import { proto as WAProto } from './proto/WAMessage';
             const advSecret = decodeB64(await storageService.get('advSecretKey'));
             const advSign = await hmacSha256(advSecret, details);
 
-            if (encodeB64(hmac) !== encodeB64(advSign)) {
+            if (encodeB64(hmac) !== encodeB64(new Uint8Array(advSign))) {
                 console.log('invalid hmac from pair-device success');
 
                 sendNotAuthozired();
@@ -443,14 +443,14 @@ import { proto as WAProto } from './proto/WAMessage';
 
                 const isPeer = (jid: WapJid) => {
                     const me = storageService.get<WapJid>('me');
-
+                    console.log('me', me);
                     return jid.equals(me);
                 };
 
                 if (from.isUser()) {
                     if (recipient) {
                         if (!isPeer(from)) {
-                            //throw new Error('recipient on non peer chat message');
+                            throw new Error('recipient on non peer chat message');
                         }
 
                         return {
@@ -653,6 +653,11 @@ import { proto as WAProto } from './proto/WAMessage';
             }
         };
 
+        const parseNotification = (stanza: WapNode) => {
+            console.log('recevied notification', stanza.content[0]);
+            console.log('devices', stanza.content[0].content);
+        }
+
         const handleStanza = async (stanza: WapNode) => {
             if (!(stanza instanceof WapNode)) {
                 return null;
@@ -691,7 +696,19 @@ import { proto as WAProto } from './proto/WAMessage';
             if (tag == 'message') {
                 await parseMessage(stanza);
             }
+
+            if (tag == 'notification') {
+                await parseNotification(stanza);
+            }
         };
+
+        const createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {
+            
+        }
+
+        const sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
+            
+        }
 
         const PING_INTERVAL = 1e4 * Math.random() + 2e4;
         console.log('SENDING PING EVERY', PING_INTERVAL);

@@ -1,121 +1,115 @@
-//var a = r(58328) // promisequeue
-import { PromiseQueue } from "./../utils/PromiseQueue";
-import * as Crypto from "crypto";
-import { FrameSocket } from "./FrameSocket";
+import { PromiseQueue } from './../utils/PromiseQueue';
+import * as Crypto from 'crypto';
+import { FrameSocket } from './FrameSocket';
 
 const crypto = Crypto.webcrypto as any;
 
-let i = Promise.reject("UNINITIALIZED HANDSHAKE"),
-  n = new Uint8Array(0);
-
-i.catch(() => {});
-function s(e) {
-  var t = new ArrayBuffer(12);
-  return new DataView(t).setUint32(8, e), new Uint8Array(t);
-}
-
 export class NoiseSocket {
-  private incoming = [];
-  private readQueue = new PromiseQueue();
-  private sendQueue = new PromiseQueue();
-  private readCounter = 0;
-  private writeCounter = 0;
-  private draining = false;
-  private socket: FrameSocket;
-  private writeKey: any;
-  private readKey: any;
-  public onClose: Function;
-  public onFrame: Function;
+    private incoming: ArrayBuffer[] = [];
+    private readQueue = new PromiseQueue();
+    private sendQueue = new PromiseQueue();
+    private readCounter = 0;
+    private writeCounter = 0;
+    private draining = false;
+    private socket: FrameSocket;
+    private writeKey: Uint8Array;
+    private readKey: Uint8Array;
+    public onClose: Function;
+    public onFrame: Function;
 
-  constructor(e: FrameSocket, t, r) {
-    this.incoming = [];
-    this.readCounter = 0;
-    this.writeCounter = 0;
-    this.draining = false;
-   
+    constructor(socket: FrameSocket, writeKey: Uint8Array, readKey: Uint8Array) {
+        this.incoming = [];
+        this.readCounter = 0;
+        this.writeCounter = 0;
+        this.draining = false;
 
-    this.socket = e;
-    this.writeKey = t;
-    this.readKey = r;
-    e.onFrame = this.handleCiphertext.bind(this);
-    this.socket.onClose = this.handleOnClose.bind(this);
-    e.convertBufferedToFrames();
-  }
+        this.socket = socket;
+        this.writeKey = writeKey;
+        this.readKey = readKey;
 
-  handleCiphertext (e) {
-    var t = this.readCounter++;
-    this.readQueue.enqueueHandlers(
-      (function (e, t, r, a) {
-        return crypto.subtle.decrypt(
-          {
-            name: "AES-GCM",
-            iv: s(t),
-            additionalData: r ? new Uint8Array(r) : n,
-          },
-          e,
-          a
-        );
-      })(this.readKey, t, void 0, e),
-      this.handlePlaintext.bind(this)
-    );
-  };
+        this.socket.onFrame = this.handleCiphertext.bind(this);
+        this.socket.onClose = this.handleOnClose.bind(this);
 
-  handleOnClose() {
-    (this.draining = !0),
-      this.readQueue.wait().then(() => {
-        this.draining = !1;
-        var e = this.onClose
-        e && e();
-      });
-  };
-
-  sendCiphertextFrame(e) {
-    //this.socket.closed
-
-    this.socket.sendFrame(e);
-  }
-    
-  handlePlaintext (e) {
-    this.onFrame ? this.onFrame(e) : this.incoming.push(e);
-  };
-
-  sendFrame(e) {
-    if (!this.draining) {
-      this.socket.throwIfClosed();
-      var t,
-        r,
-        a,
-        i,
-        o = this.writeCounter++;
-      this.sendQueue.enqueueHandlers(
-        ((t = this.writeKey),
-        (r = o),
-        (a = void 0),
-        (i = e),
-        crypto.subtle.encrypt(
-          {
-            name: "AES-GCM",
-            iv: s(r),
-            additionalData: a ? new Uint8Array(a) : n,
-          },
-          t,
-          i
-        )),
-        this.sendCiphertextFrame.bind(this)
-      );
+        socket.convertBufferedToFrames();
     }
-  }
-  setOnFrame(e) {
-    this.onFrame = e;
-  }
-  setOnClose(e) {
-    this.onClose = e;
-  }
-  close() {
-    this.socket.close();
-  }
 
-  restart() {
-    this.socket.restart();
-  }
+    public sendCiphertextFrame(data: Uint8Array) {
+        this.socket.throwIfClosed();
+
+        this.socket.sendFrame(data);
+    }
+
+    public sendFrame(data: Uint8Array) {
+        if (this.draining) {
+            return;
+        }
+
+        this.socket.throwIfClosed();
+
+        const currCount = this.writeCounter++;
+        this.sendQueue.enqueueHandlers(
+            crypto.subtle.encrypt(
+                {
+                    name: 'AES-GCM',
+                    iv: this.generateIv(currCount),
+                    additionalData: new Uint8Array(0),
+                },
+                this.writeKey,
+                data,
+            ),
+            this.sendCiphertextFrame.bind(this),
+        );
+    }
+
+    public setOnFrame(cb: Function) {
+        this.onFrame = cb;
+    }
+
+    public setOnClose(cb: Function) {
+        this.onClose = cb;
+    }
+
+    public close() {
+        this.socket.close();
+    }
+
+    public restart() {
+        this.socket.restart();
+    }
+
+    private handlePlaintext(data: ArrayBuffer) {
+        this.onFrame ? this.onFrame(data) : this.incoming.push(data);
+    }
+
+    private handleCiphertext(data: Uint8Array) {
+        const currCount = this.readCounter++;
+        this.readQueue.enqueueHandlers(
+            crypto.subtle.decrypt(
+                {
+                    name: 'AES-GCM',
+                    iv: this.generateIv(currCount),
+                    additionalData: new Uint8Array(0),
+                },
+                this.readKey,
+                data,
+            ),
+            this.handlePlaintext.bind(this),
+        );
+    }
+
+    private async handleOnClose() {
+        this.draining = true;
+        await this.readQueue.wait();
+        this.draining = false;
+        if (this.onClose) {
+            this.onClose();
+        }
+    }
+
+    private generateIv(count: number) {
+        const iv = new ArrayBuffer(12);
+        new DataView(iv).setUint32(8, count);
+
+        return new Uint8Array(iv);
+    }
 }

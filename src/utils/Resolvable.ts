@@ -1,6 +1,6 @@
 
 export class Resolvable {
-    private promise: Promise<any>;
+    public promise: Promise<any>;
     private isResolved = false;
     private resolver: Function;
 
