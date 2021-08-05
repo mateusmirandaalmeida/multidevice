@@ -738,6 +738,14 @@ export class WaClient {
         console.log(stanza);
     };
 
+    private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {
+            
+    }
+
+    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
+        
+    }
+
     private createKeepAlive = () => {
         this.keepAliveTimer = setInterval(() => {
             console.log('send ping to server');

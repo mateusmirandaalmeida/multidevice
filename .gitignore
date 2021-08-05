@@ -1,4 +1,5 @@
 node_modules
+sessions
 yarn-error.log
 storage.json
 codes
