@@ -68,7 +68,7 @@ export class WaClient {
         this.initConfig();
     }
 
-    initConfig() {
+    private initConfig() {
         this.storageService.init(`${this.sessionName.replace(/ /g, '-')}.json`);
         this.storageSignal = new StorageSignal(this.storageService);
         this.waSignal = new WaSignal(this.storageService, this.storageSignal);
