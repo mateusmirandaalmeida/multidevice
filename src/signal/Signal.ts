@@ -1,157 +1,161 @@
 import { ProtocolAddress } from './ProtocolAddress';
-import { storageService } from './../services/StorageService';
 import { generatePreKey, Key, PreKey } from './../utils/Curve';
 import libsignal from 'libsignal';
-import { storageSignal } from './StorageSignal';
 import { WapJid } from './../proto/WapJid';
+import { StorageService } from '../services/StorageService';
+import { StorageSignal } from './StorageSignal';
 
 interface IIdentity {
     identifier: ProtocolAddress;
     identifierKey: Key;
 }
 
-export const toSignalCurvePubKey = (pubKey: any) => {
-    const newPub = new Uint8Array(33);
-    newPub.set([5], 0);
-    newPub.set(pubKey, 1);
+export class WaSignal {
+    constructor(public storageService: StorageService, public storageSignal: StorageSignal) {}
 
-    return newPub;
-};
+    toSignalCurvePubKey = (pubKey: any) => {
+        const newPub = new Uint8Array(33);
+        newPub.set([5], 0);
+        newPub.set(pubKey, 1);
 
-export const createSignalAddress = (name: string, deviceId: number) => new ProtocolAddress(name, deviceId);
+        return newPub;
+    };
 
-export const putIdentity = async (address: ProtocolAddress, key: Key) => {
-    const identities = await storageService.getOrSave<IIdentity[]>('identities', () => []);
+    createSignalAddress = (name: string, deviceId: number) => new ProtocolAddress(name, deviceId);
 
-    identities.push({
-        identifier: address,
-        identifierKey: key,
-    });
+    putIdentity = async (address: ProtocolAddress, key: Key) => {
+        const identities = await this.storageService.getOrSave<IIdentity[]>('identities', () => []);
 
-    await storageService.save('identities', identities);
-};
+        identities.push({
+            identifier: address,
+            identifierKey: key,
+        });
 
-export const putMeta = async (metaName: string, value: any) => {
-    const metas = await storageService.getOrSave('metas', () => {});
+        await this.storageService.save('identities', identities);
+    };
 
-    metas[metaName] = value;
+    putMeta = async (metaName: string, value: any) => {
+        const metas = await this.storageService.getOrSave('metas', () => {});
 
-    storageService.save('metas', metas);
-};
+        metas[metaName] = value;
 
-export const getMeta = async <T = any>(metaName: string): Promise<T> => {
-    const metas = await storageService.getOrSave('metas', () => {
-        return {};
-    });
+        this.storageService.save('metas', metas);
+    };
 
-    return metas[metaName] ?? null;
-};
+    getMeta = async <T = any>(metaName: string): Promise<T> => {
+        const metas = await this.storageService.getOrSave('metas', () => {
+            return {};
+        });
 
-export const getPreKeysByRange = async (range: number, limit: number) => {
-    const preKeys = await storageService.getOrSave<PreKey[]>('preKeys', () => []);
+        return metas[metaName] ?? null;
+    };
 
-    return preKeys.filter((keys) => keys.keyId > range - 1).slice(0, limit);
-};
+    getPreKeysByRange = async (range: number, limit: number) => {
+        const preKeys = await this.storageService.getOrSave<PreKey[]>('preKeys', () => []);
 
-export const savePreKeys = async (keys: PreKey[]) => {
-    if (!keys) {
-        return;
-    }
+        return preKeys.filter((keys) => keys.keyId > range - 1).slice(0, limit);
+    };
 
-    const lastKey = keys[keys.length - 1];
-    await putMeta('nextPreKeyId', lastKey.keyId + 1);
-
-    const preKeys = await storageService.getOrSave<PreKey[]>('preKeys', () => []);
-
-    keys.map((key) => {
-        const exists = preKeys.find((p) => p.keyId == key.keyId);
-        if (exists) {
-            throw Error(`preKey id ${key.keyId} already exists`);
+    savePreKeys = async (keys: PreKey[]) => {
+        if (!keys) {
+            return;
         }
 
-        preKeys.push(key);
-    });
+        const lastKey = keys[keys.length - 1];
+        await this.putMeta('nextPreKeyId', lastKey.keyId + 1);
 
-    await storageService.save('preKeys', preKeys);
+        const preKeys = await this.storageService.getOrSave<PreKey[]>('preKeys', () => []);
 
-    return true;
-};
+        keys.map((key) => {
+            const exists = preKeys.find((p) => p.keyId == key.keyId);
+            if (exists) {
+                throw Error(`preKey id ${key.keyId} already exists`);
+            }
 
-export const getOrGenPreKeys = async (range: number) => {
-    const firstUnuploadedId = (await getMeta('firstUnuploadedId')) ?? 1;
-    const nextPreKeyId = (await getMeta('nextPreKeyId')) ?? 1;
+            preKeys.push(key);
+        });
 
-    const avaliable = nextPreKeyId - firstUnuploadedId;
-    const remaining = range - avaliable;
+        await this.storageService.save('preKeys', preKeys);
 
-    if (remaining <= 0) {
-        console.log(`getOrGenPreKeys: no prekey needs to be generated, avaliable: ${avaliable}, need: ${range}`);
-        return getPreKeysByRange(firstUnuploadedId, range);
-    }
+        return true;
+    };
 
-    const keys = ((range: number, limit: number) => {
-        const out = [];
-        for (let a = range; a < limit; a++) {
-            out.push(a);
-        }
-        return out;
-    })(nextPreKeyId, nextPreKeyId + remaining).map((keyId) => generatePreKey(keyId));
+    getOrGenPreKeys = async (range: number) => {
+        const firstUnuploadedId = (await this.getMeta('firstUnuploadedId')) ?? 1;
+        const nextPreKeyId = (await this.getMeta('nextPreKeyId')) ?? 1;
 
-    await savePreKeys(keys);
+        const avaliable = nextPreKeyId - firstUnuploadedId;
+        const remaining = range - avaliable;
 
-    return getPreKeysByRange(firstUnuploadedId, range);
-};
-
-export const markKeyAsUploaded = async (id: number) => {
-    const firstUnuploadedId = await getMeta('firstUnuploadedId');
-    const nextPreKeyId = (await getMeta('nextPreKeyId')) ?? 1;
-
-    if (id < 0 || !nextPreKeyId || id >= nextPreKeyId) {
-        throw Error(`markKeyAsUploaded: key ${id} is out of boundary.`);
-    }
-
-    await putMeta('firstUnuploadedId', firstUnuploadedId ? Math.max(firstUnuploadedId, id + 1) : id + 1);
-};
-
-export const putServerHasPreKeys = async (flag: boolean) => {
-    await putMeta('serverHasPreKeys', flag);
-};
-
-export const getServerHasPreKeys = async () => {
-    return getMeta<boolean>('serverHasPreKeys');
-};
-
-export const createLibSignalAddress = (e: WapJid) => {
-    if (!(e.isUser() || e.isServer() || e.isPSA())) throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
-
-    return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
-};
-
-export const decryptSignalProto = async (e, t, r) => {
-    try {
-        const session = new libsignal.SessionCipher(storageSignal, createLibSignalAddress(e));
-
-        switch (t) {
-            case 'pkmsg':
-                return session.decryptPreKeyWhisperMessage(r);
-            case 'msg':
-                return session.decryptWhisperMessage(r);
-            default:
-                return Promise.reject(`decryptSignalProto: Received unsupported msg type ${t}`);
-        }
-    } catch (err) {
-        if (e && 'call_failure' === e.reason && e.value && 'number' == typeof e.value.result) {
-            console.log(`decryptSignalProto error code ${e.value.result}`);
-        } else {
-            if (e && 'MessageCounterError' === e.name) {
-                //return Promise.reject(new i.SignalMessageCounterError(e));
-                console.log('SignalMessageCounterError', e);
-                throw err;
-            } 
-
-            console.log(`decryptSignalProto js error ${e}`);
+        if (remaining <= 0) {
+            console.log(`getOrGenPreKeys: no prekey needs to be generated, avaliable: ${avaliable}, need: ${range}`);
+            return this.getPreKeysByRange(firstUnuploadedId, range);
         }
 
-        throw err;
-    }
-};
+        const keys = ((range: number, limit: number) => {
+            const out = [];
+            for (let a = range; a < limit; a++) {
+                out.push(a);
+            }
+            return out;
+        })(nextPreKeyId, nextPreKeyId + remaining).map((keyId) => generatePreKey(keyId));
+
+        await this.savePreKeys(keys);
+
+        return this.getPreKeysByRange(firstUnuploadedId, range);
+    };
+
+    markKeyAsUploaded = async (id: number) => {
+        const firstUnuploadedId = await this.getMeta('firstUnuploadedId');
+        const nextPreKeyId = (await this.getMeta('nextPreKeyId')) ?? 1;
+
+        if (id < 0 || !nextPreKeyId || id >= nextPreKeyId) {
+            throw Error(`markKeyAsUploaded: key ${id} is out of boundary.`);
+        }
+
+        await this.putMeta('firstUnuploadedId', firstUnuploadedId ? Math.max(firstUnuploadedId, id + 1) : id + 1);
+    };
+
+    putServerHasPreKeys = async (flag: boolean) => {
+        await this.putMeta('serverHasPreKeys', flag);
+    };
+
+    getServerHasPreKeys = async () => {
+        return this.getMeta<boolean>('serverHasPreKeys');
+    };
+
+    createLibSignalAddress = (e: WapJid) => {
+        if (!(e.isUser() || e.isServer() || e.isPSA())) throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+
+        return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
+    };
+
+    decryptSignalProto = async (e, t, r) => {
+        try {
+            const session = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
+
+            switch (t) {
+                case 'pkmsg':
+                    return session.decryptPreKeyWhisperMessage(r);
+                case 'msg':
+                    return session.decryptWhisperMessage(r);
+                default:
+                    return Promise.reject(`decryptSignalProto: Received unsupported msg type ${t}`);
+            }
+        } catch (err) {
+            if (e && 'call_failure' === e.reason && e.value && 'number' == typeof e.value.result) {
+                console.log(`decryptSignalProto error code ${e.value.result}`);
+            } else {
+                if (e && 'MessageCounterError' === e.name) {
+                    //return Promise.reject(new i.SignalMessageCounterError(e));
+                    console.log('SignalMessageCounterError', e);
+                    throw err;
+                }
+
+                console.log(`decryptSignalProto js error ${e}`);
+            }
+
+            throw err;
+        }
+    };
+}
