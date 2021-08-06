@@ -1,5 +1,4 @@
 import * as Curve from "curve25519-js";
-import { decode } from "punycode";
 import { decodeB64, encodeB64 } from "./Base64";
 import { randomBytes } from "./Utils";
 

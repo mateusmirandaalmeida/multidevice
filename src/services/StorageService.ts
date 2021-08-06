@@ -1,16 +1,23 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { WapJid } from '../proto/WapJid';
 import { Key, KeyPair, PreKey, SignedKeyPair } from '../utils/Curve';
+import * as fs from 'fs';
+import * as path from 'path';
 
-class StorageService {
+export class StorageService {
     private storagePath: string;
     private storage: {
         [key: string]: any;
     } = {};
 
-    public init(path: string) {
-        this.storagePath = path;
+    constructor(public defaultFolter = './sessions') {
+        if (!fs.existsSync(defaultFolter)) {
+            fs.mkdirSync(defaultFolter, { recursive: true });
+        }
+    }
 
+    public init(fileName: string) {
+        this.storagePath = path.join(this.defaultFolter, fileName)
         this.loadStorage();
     }
 
@@ -112,4 +119,4 @@ class StorageService {
     }
 }
 
-export const storageService = new StorageService();
+// export const storageService = new StorageService();

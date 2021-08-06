@@ -1,16 +1,18 @@
 import { KeyPair, PreKey } from '../utils/Curve';
-import { storageService } from './../services/StorageService';
 import { SignedKeyPair } from './../utils/Curve';
-import libsignal from 'libsignal';
+import { StorageService } from '../services/StorageService';
 
-class StorageSignal {
+export class StorageSignal {
+
+    constructor(public storageService: StorageService) {}
+
     public static DIRECTION: {
         SENDING: 1;
         RECEIVING: 2;
     };
 
     getOurIdentity() {
-        const signedIdentityKey = storageService.get<KeyPair>('signedIdentityKey');
+        const signedIdentityKey = this.storageService.get<KeyPair>('signedIdentityKey');
 
         const pubKey = new Uint8Array(33); // (ノಠ益ಠ)ノ彡┻━┻
         pubKey.set([5], 0);
@@ -23,7 +25,7 @@ class StorageSignal {
     }
 
     getLocalRegistrationId() {
-        const registrationId = storageService.get<number>('registrationId');
+        const registrationId = this.storageService.get<number>('registrationId');
         return registrationId;
     }
 
@@ -33,7 +35,7 @@ class StorageSignal {
 
     /* Returns a prekeypair object or undefined */
     loadPreKey(keyId) {
-        const preKeys = storageService.get<PreKey[]>('preKeys');
+        const preKeys = this.storageService.get<PreKey[]>('preKeys');
         const preKey = preKeys.find((prekey) => prekey.keyId == keyId);
 
         if (!preKey) {
@@ -50,16 +52,16 @@ class StorageSignal {
 
     async removePreKey(keyId) {
         return true;
-        const preKeys = storageService.get<PreKey[]>('preKeys');
+        const preKeys = this.storageService.get<PreKey[]>('preKeys');
 
         preKeys.splice(preKeys.findIndex((preKey) => preKey.keyId == keyId), 1);
 
-        await storageService.save('preKeys', preKeys);
+        await this.storageService.save('preKeys', preKeys);
     }
 
     /* Returns a signed keypair object or undefined */
     async loadSignedPreKey(keyId) {
-        const signedPreKey = await storageService.get<SignedKeyPair>('signedPreKey');
+        const signedPreKey = await this.storageService.get<SignedKeyPair>('signedPreKey');
         return {
             privKey: Buffer.from(signedPreKey.keyPair.privKey),
             pubKey: Buffer.from(signedPreKey.keyPair.pubKey),
@@ -68,7 +70,7 @@ class StorageSignal {
 
     async loadSession(identifier) {
         return null;
-        const sessions = await storageService.getOrSave('sessions', () => {
+        const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
         });
 
@@ -81,17 +83,17 @@ class StorageSignal {
 
     async storeSession(identifier, record) {
         return null;
-        const sessions = await storageService.getOrSave('sessions', () => {
+        const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
         });
 
         sessions[identifier] = record;
 
-        await storageService.save('sessions', sessions);
+        await this.storageService.save('sessions', sessions);
     }
 
     async removeSession(identifier) {
-        const sessions = await storageService.getOrSave('sessions', () => {
+        const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
         });
 
@@ -99,12 +101,11 @@ class StorageSignal {
             delete sessions[identifier];
         }
 
-        await storageService.save('sessions', sessions);
+        await this.storageService.save('sessions', sessions);
     }
 
     async removeAllSessions(identifier) {
-        await storageService.save('sessions', {});
+        await this.storageService.save('sessions', {});
     }
 }
 
-export const storageSignal = new StorageSignal();
