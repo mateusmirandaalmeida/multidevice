@@ -4,6 +4,7 @@ import libsignal from 'libsignal';
 import { WapJid } from './../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
+import ByteBuffer from 'bytebuffer';
 
 interface IIdentity {
     identifier: ProtocolAddress;
@@ -161,17 +162,21 @@ export class WaSignal {
 
     /** whatsapp web file qr: line 36027 */
     strToBuffer = function (e) {
-        // return new dcodeIO.ByteBuffer.wrap(e,"binary").toArrayBuffer()
+        return ByteBuffer.wrap(e,"binary").toArrayBuffer()
     };
 
-    /** whatsapp web file qr: line 33750: yield d.Cipher.encryptSignalProto */
-    encryptSignalProto = (e, t) => {
-        // const session = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
-        // return Promise.resolve(session)
-        //     .then((e) => e.encrypt(t))
-        //     .then(({ type: e, body: t }) => ({
-        //         type: 3 === e ? 'pkmsg' : 'Msg',
-        //         ciphertext: this.strToBuffer(t),
-        //     }));
+    encryptSignalProto = async (e, t) => {
+        var r = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
+
+        return Promise.resolve(r)
+            .then((e) => {
+                return e.encrypt(Buffer.from(t))
+            })
+            .then(({ type: e, body: t }) => {
+                return {
+                    type: 3 === e ? 'pkmsg' : 'Msg',
+                    ciphertext: this.strToBuffer(t),
+                }
+            });
     };
 }

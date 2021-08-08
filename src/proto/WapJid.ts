@@ -29,11 +29,12 @@ export class WapJid {
         });
     }
 
-    static create(user: string, server?: string) {
+    static create(user: string, server?: string, device?) {
         return new WapJid({
             type: WapJid.JID,
             user,
             server,
+            device
         });
     }
 

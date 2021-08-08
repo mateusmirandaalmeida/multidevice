@@ -9,6 +9,9 @@ export class StorageService {
     private storage: {
         [key: string]: any;
     } = {};
+    private storageMemory: {
+        [key: string]: any;
+    } = {};
 
     constructor(public defaultFolter = './sessions') {
         if (!fs.existsSync(defaultFolter)) {
@@ -17,7 +20,7 @@ export class StorageService {
     }
 
     public init(fileName: string) {
-        this.storagePath = path.join(this.defaultFolter, fileName)
+        this.storagePath = path.join(this.defaultFolter, fileName);
         this.loadStorage();
     }
 
@@ -30,7 +33,16 @@ export class StorageService {
         return this.storage[key] ?? null;
     }
 
-    public async getOrSave<T = any>(key: string, callback: Function): Promise<T> {
+    public async getOrSave<T = any>(key: string, callback: Function, onlyMemory = false): Promise<T> {
+        if (onlyMemory) {
+            if (this.storageMemory[key]) {
+                return this.storageMemory[key];
+            }
+            const data = await callback();
+            this.storageMemory[key] = data;
+            return data;
+        }
+
         if (this.storage[key]) {
             return this.storage[key];
         }
@@ -46,7 +58,11 @@ export class StorageService {
         return data;
     }
 
-    public async save<T = any>(key: string, data: any): Promise<T> {
+    public async save<T = any>(key: string, data: any, onlyMemory = false): Promise<T> {
+        if (onlyMemory) {
+            this.storageMemory[key] = data;
+            return data;
+        }
         this.storage[key] = data;
         this.writeStorage();
         return data;
@@ -68,6 +84,14 @@ export class StorageService {
     }
 
     private parseData = (data: any) => {
+        if (!(Array.isArray(data) || typeof data === 'object')) {
+            return data;
+        }
+
+        if (data?.type && typeof data?.type == 'string' && Array.isArray(data.data)) {
+            return this.castElement(data);
+        }
+
         const out: {
             [key: string]: any;
         } = {};
@@ -85,6 +109,15 @@ export class StorageService {
                     continue;
                 }
 
+                if (typeof element === 'object') {
+                    const keys = Object.keys(element);
+                    if (keys.length > 0) {
+                        keys.forEach((key) => {
+                            element[key] = this.parseData(element[key]);
+                        });
+                    }
+                }
+
                 if (element?.type) {
                     element = this.castElement(element);
                 }
@@ -98,6 +131,16 @@ export class StorageService {
 
     private castElement(element: any) {
         switch (element.type) {
+            case 'Buffer':
+                try {
+                    return Buffer.from(element.data);
+                } catch (e) {
+                    var arr = [];
+                    Object.keys(element.data).forEach((index) => {
+                        arr.push(element.data[index]);
+                    });
+                    return Buffer.from(arr);
+                }
             case 'key':
                 return Key.parse(element);
             case 'keyPair':

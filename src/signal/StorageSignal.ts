@@ -1,6 +1,7 @@
 import { KeyPair, PreKey } from '../utils/Curve';
 import { SignedKeyPair } from './../utils/Curve';
 import { StorageService } from '../services/StorageService';
+import libsignal from 'libsignal';
 
 export class StorageSignal {
 
@@ -69,27 +70,39 @@ export class StorageSignal {
     }
 
     async loadSession(identifier) {
-        return null;
         const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
-        });
+        }, true);
 
         if (!sessions[identifier]) {
             return null;
         }
 
-        return sessions[identifier];
+        if (sessions[identifier]) {
+            const data = sessions[identifier]
+            const record = new libsignal.SessionRecord()
+            record.version = data.version
+            Object.keys(data.sessions).forEach((key) => {
+                const session = data.sessions[key]
+                record.sessions[key] = libsignal.SessionRecord.createEntry()
+                record.sessions[key]._chains = session._chains
+                record.sessions[key].currentRatchet = session.currentRatchet
+                record.sessions[key].indexInfo = session.indexInfo
+                record.sessions[key].registrationId = session.registrationId
+            })
+            return record
+        } 
+        return null
     }
 
     async storeSession(identifier, record) {
-        return null;
         const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
-        });
+        }, true);
 
         sessions[identifier] = record;
 
-        await this.storageService.save('sessions', sessions);
+        await this.storageService.save('sessions', sessions, true);
     }
 
     async removeSession(identifier) {

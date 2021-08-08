@@ -21,6 +21,9 @@ import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
+import { MessageSpec } from './proto/specs/Message';
+import { SPEC_CONSTS } from './proto/Spec';
+import { encodeAndPad } from './proto/EncodeAndPad';
 
 const sessions = {};
 
@@ -53,6 +56,7 @@ export class WaClient {
     private noiseKey: KeyPair;
     private signedPreKey: SignedKeyPair;
     private advSecretKey: string;
+    private deviceIdentityBytes: any
 
     /** events */
     private onSocketClose: Function;
@@ -308,11 +312,13 @@ export class WaClient {
         const pair: WapNode = node.content[0];
 
         const id = node.attrs.id;
-        const deviceIdentityBytes = pair.getContentByTag('device-identity')?.content;
+        this.deviceIdentityBytes = pair.getContentByTag('device-identity')?.content;
         const businessName = pair.getContentByTag('biz')?.attrs?.name ?? null;
         const wid = pair.getContentByTag('device')?.attrs?.jid ?? null;
 
-        const { details, hmac } = WAProto.ADVSignedDeviceIdentityHMAC.decode(deviceIdentityBytes);
+        const { details, hmac } = WAProto.ADVSignedDeviceIdentityHMAC.decode(this.deviceIdentityBytes);
+
+        this.storageService.save('device-identity-bytes', Array.from(this.deviceIdentityBytes))
 
         if (!details || !hmac) {
             console.log('invalid device details or hmac');
@@ -728,9 +734,95 @@ export class WaClient {
 
     private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {};
 
-    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {};
+    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
+        const deviceIdentity = await this.storageService.get('device-identity-bytes')
+        let destination = 'NUMBER OF DESTINATION';
+        let text = 'Hello world';
+
+        const destinationEncoded = encodeAndPad({ conversation: text });
+        const destinationJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
+        const destinationProto = await this.waSignal.encryptSignalProto(destinationJid, destinationEncoded);
+
+        const meDeviceEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
+        const meDeviceJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
+        const meDeviceProto = await this.waSignal.encryptSignalProto(meDeviceJid, meDeviceEncoded);
+
+        const mePhoneEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
+        const mePhoneJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
+        const mePhoneProto = await this.waSignal.encryptSignalProto(mePhoneJid, mePhoneEncoded);
+
+        const stanza = new WapNode(
+            'message',
+            {
+                id: '3EB06F7B2BB05CDB2F5323435',
+                type: 'text',
+                to: destinationJid,
+            },
+            [
+                new WapNode('participants', {}, [
+                    new WapNode(
+                        'to',
+                        {
+                            jid: destinationJid,
+                        },
+                        [
+                            new WapNode(
+                                'enc',
+                                {
+                                    v: '2',
+                                    type: destinationProto.type.toLowerCase(),
+                                },
+                                new Uint8Array(destinationProto.ciphertext),
+                            ),
+                        ],
+                    ),
+                    // new WapNode(
+                    //     'to',
+                    //     {
+                    //         jid: WapJid.createAD(this.me.getUser(), 0, 0),
+                    //     },
+                    //     new WapNode(
+                    //         'enc',
+                    //         {
+                    //             v: '2',
+                    //             type: meDeviceProto.type.toLowerCase(),
+                    //         },
+                    //         new Uint8Array(meDeviceProto.ciphertext),
+                    //     ),
+                    // ),
+                    // new WapNode(
+                    //     'to',
+                    //     {
+                    //         jid: WapJid.createAD(this.me.getUser(), 0, 14),
+                    //     },
+                    //     new WapNode(
+                    //         'enc',
+                    //         {
+                    //             v: '2',
+                    //             type: mePhoneProto.type.toLowerCase(),
+                    //         },
+                    //         new Uint8Array(mePhoneProto.ciphertext),
+                    //     ),
+                    // ),
+                ]),
+                new WapNode(
+                    'device-identity',
+                    {},
+                    new Uint8Array(deviceIdentity),
+                ),
+            ],
+        );
+
+        const frame = encodeStanza(stanza);
+        this.socketConn.sendFrame(frame);
+    };
 
     private createKeepAlive = () => {
+        setTimeout(() => {
+            console.log(`Enviando mensagem`);
+            this.sendMessage(null, null);
+        }, 5000);
+
         this.keepAliveTimer = setInterval(() => {
             console.log('send ping to server');
             this.socketConn.sendFrame(
@@ -759,6 +851,6 @@ export class WaClient {
     destroy() {
         this.socketConn.close();
         this.socket.close();
-        delete sessions[this.sessionName]
+        delete sessions[this.sessionName];
     }
 }
