@@ -21,8 +21,6 @@ import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
-import { MessageSpec } from './proto/specs/Message';
-import { SPEC_CONSTS } from './proto/Spec';
 import { encodeAndPad } from './proto/EncodeAndPad';
 
 const sessions = {};
@@ -56,7 +54,7 @@ export class WaClient {
     private noiseKey: KeyPair;
     private signedPreKey: SignedKeyPair;
     private advSecretKey: string;
-    private deviceIdentityBytes: any
+    private deviceIdentityBytes: any;
 
     /** events */
     private onSocketClose: Function;
@@ -318,7 +316,7 @@ export class WaClient {
 
         const { details, hmac } = WAProto.ADVSignedDeviceIdentityHMAC.decode(this.deviceIdentityBytes);
 
-        this.storageService.save('device-identity-bytes', Array.from(this.deviceIdentityBytes))
+        this.storageService.save('device-identity-bytes', Array.from(this.deviceIdentityBytes));
 
         if (!details || !hmac) {
             console.log('invalid device details or hmac');
@@ -735,16 +733,17 @@ export class WaClient {
     private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {};
 
     private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
-        const deviceIdentity = await this.storageService.get('device-identity-bytes')
-        let destination = 'NUMBER OF DESTINATION';
+        return
+        const deviceIdentity = await this.storageService.get('device-identity-bytes');
+        let destination = 'NUMERO';
         let text = 'Hello world';
 
         const destinationEncoded = encodeAndPad({ conversation: text });
-        const destinationJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
+        const destinationJid = WapJid.create(destination, 's.whatsapp.net', 0);
         const destinationProto = await this.waSignal.encryptSignalProto(destinationJid, destinationEncoded);
 
         const meDeviceEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
-        const meDeviceJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
+        const meDeviceJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 14);
         const meDeviceProto = await this.waSignal.encryptSignalProto(meDeviceJid, meDeviceEncoded);
 
         const mePhoneEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
@@ -756,14 +755,14 @@ export class WaClient {
             {
                 id: '3EB06F7B2BB05CDB2F5323435',
                 type: 'text',
-                to: destinationJid,
+                to: WapJid.create(destination, 's.whatsapp.net'),
             },
             [
                 new WapNode('participants', {}, [
                     new WapNode(
                         'to',
                         {
-                            jid: destinationJid,
+                            jid: WapJid.createAD(destination, 0, 0),
                         },
                         [
                             new WapNode(
@@ -776,40 +775,40 @@ export class WaClient {
                             ),
                         ],
                     ),
-                    // new WapNode(
-                    //     'to',
-                    //     {
-                    //         jid: WapJid.createAD(this.me.getUser(), 0, 0),
-                    //     },
-                    //     new WapNode(
-                    //         'enc',
-                    //         {
-                    //             v: '2',
-                    //             type: meDeviceProto.type.toLowerCase(),
-                    //         },
-                    //         new Uint8Array(meDeviceProto.ciphertext),
-                    //     ),
-                    // ),
-                    // new WapNode(
-                    //     'to',
-                    //     {
-                    //         jid: WapJid.createAD(this.me.getUser(), 0, 14),
-                    //     },
-                    //     new WapNode(
-                    //         'enc',
-                    //         {
-                    //             v: '2',
-                    //             type: mePhoneProto.type.toLowerCase(),
-                    //         },
-                    //         new Uint8Array(mePhoneProto.ciphertext),
-                    //     ),
-                    // ),
+                    new WapNode(
+                        'to',
+                        {
+                            jid: WapJid.createAD(this.me.getUser(), 0, 14),
+                        },
+                        [
+                            new WapNode(
+                                'enc',
+                                {
+                                    v: '2',
+                                    type: meDeviceProto.type.toLowerCase(),
+                                },
+                                new Uint8Array(meDeviceProto.ciphertext),
+                            ),
+                        ],
+                    ),
+                    new WapNode(
+                        'to',
+                        {
+                            jid: WapJid.createAD(this.me.getUser(), 0, 0),
+                        },
+                        [
+                            new WapNode(
+                                'enc',
+                                {
+                                    v: '2',
+                                    type: mePhoneProto.type.toLowerCase(),
+                                },
+                                new Uint8Array(mePhoneProto.ciphertext),
+                            ),
+                        ],
+                    ),
                 ]),
-                new WapNode(
-                    'device-identity',
-                    {},
-                    new Uint8Array(deviceIdentity),
-                ),
+                new WapNode('device-identity', {}, new Uint8Array(deviceIdentity)),
             ],
         );
 

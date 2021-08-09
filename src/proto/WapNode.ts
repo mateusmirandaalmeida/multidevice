@@ -57,17 +57,35 @@ export class WapNode {
     }
 
     child(tag: string) {
-      return this.maybeChild(tag);
+        return this.maybeChild(tag);
     }
 
-    /*toString() {
-        let e = "<" + this.tag;
+    // attrsToString(e) {
+    //     for (var t = Object.keys(e), r = '', a = 0; a < t.length; a++) {
+    //         var i = t[a];
+    //         r += ` ${i}="${e[i].toString()}"`;
+    //     }
+    //     return r;
+    // }
 
-        e += attrsToString(this.attrs);
+    // uint8ArrayToDebugString(e) {
+    //     return 0 === e.length ? '\x3c!-- empty binary --\x3e' : e.length < 50 ? bytesToDebugString(e) : `\x3c!-- ${e.length} bytes --\x3e`;
+    // }
 
-        var t = this.content;
-        return Array.isArray(t) ? e += `>${t.map(String).join("")}</${this.tag}>` : e += t ? `>${(0,
-        n.uint8ArrayToDebugString)(t)}</${this.tag}>` : " />",
-        e
-    }*/
+    // bytesToDebugString = function (e) {
+    //     var t = !0,
+    //         r = e.length;
+    //     for (; t && r; ) {
+    //         var a = e[--r];
+    //         t = 32 <= a && a < 127;
+    //     }
+    //     return t ? JSON.stringify(String.fromCharCode.apply(String, e)) : i(e);
+    // };
+
+    // toString() {
+    //     var e = '<' + this.tag;
+    //     e += this.attrsToString(this.attrs);
+    //     var t = this.content;
+    //     return Array.isArray(t) ? (e += `>${t.map(String).join('')}</${this.tag}>`) : (e += t ? `>${this.uint8ArrayToDebugString(t)}</${this.tag}>` : ' />'), e;
+    // }
 }

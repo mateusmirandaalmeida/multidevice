@@ -4,7 +4,6 @@ import { StorageService } from '../services/StorageService';
 import libsignal from 'libsignal';
 
 export class StorageSignal {
-
     constructor(public storageService: StorageService) {}
 
     public static DIRECTION: {
@@ -47,16 +46,17 @@ export class StorageSignal {
             privKey: Buffer.from(preKey.keyPair.privKey),
             pubKey: Buffer.from(preKey.keyPair.pubKey),
         };
-        
+
         return test;
     }
 
     async removePreKey(keyId) {
-        return true;
+        return;
         const preKeys = this.storageService.get<PreKey[]>('preKeys');
-
-        preKeys.splice(preKeys.findIndex((preKey) => preKey.keyId == keyId), 1);
-
+        const index = preKeys.findIndex((preKey) => preKey.keyId == keyId);
+        if (index != -1) {
+            preKeys.splice(index, 1);
+        }
         await this.storageService.save('preKeys', preKeys);
     }
 
@@ -72,37 +72,38 @@ export class StorageSignal {
     async loadSession(identifier) {
         const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
-        }, true);
+        });
 
         if (!sessions[identifier]) {
             return null;
         }
 
         if (sessions[identifier]) {
-            const data = sessions[identifier]
-            const record = new libsignal.SessionRecord()
-            record.version = data.version
+            const data = sessions[identifier];
+            const record = new libsignal.SessionRecord();
+            record.version = data.version;
             Object.keys(data.sessions).forEach((key) => {
-                const session = data.sessions[key]
-                record.sessions[key] = libsignal.SessionRecord.createEntry()
-                record.sessions[key]._chains = session._chains
-                record.sessions[key].currentRatchet = session.currentRatchet
-                record.sessions[key].indexInfo = session.indexInfo
-                record.sessions[key].registrationId = session.registrationId
-            })
-            return record
-        } 
-        return null
+                const session = data.sessions[key];
+                record.sessions[key] = libsignal.SessionRecord.createEntry();
+                record.sessions[key]._chains = session._chains;
+                record.sessions[key].currentRatchet = session.currentRatchet;
+                record.sessions[key].indexInfo = session.indexInfo;
+                record.sessions[key].registrationId = session.registrationId;
+            });
+            return record;
+        }
+
+        return null;
     }
 
     async storeSession(identifier, record) {
         const sessions = await this.storageService.getOrSave('sessions', () => {
             return {};
-        }, true);
+        });
 
         sessions[identifier] = record;
 
-        await this.storageService.save('sessions', sessions, true);
+        await this.storageService.save('sessions', sessions);
     }
 
     async removeSession(identifier) {
@@ -117,8 +118,7 @@ export class StorageSignal {
         await this.storageService.save('sessions', sessions);
     }
 
-    async removeAllSessions(identifier) {
+    async removeAllSessions() {
         await this.storageService.save('sessions', {});
     }
 }
-
