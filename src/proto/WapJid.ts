@@ -21,13 +21,13 @@ export class WapJid {
         this._jid = jid;
     }
 
-    static createAD(user: string, agent: number, device: number) {
+    static createAD(user: string, agent: number, device: number, ignoreServer = false) {
         return new WapJid({
             type: WapJid.JID_AD,
             user,
             device: device ?? 0,
             agent: agent ?? 0,
-            server: 's.whatsapp.net',
+            ...(ignoreServer ? {} : { server: 's.whatsapp.net' }),
         });
     }
 

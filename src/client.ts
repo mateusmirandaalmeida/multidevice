@@ -22,6 +22,7 @@ import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
 import { encodeAndPad } from './proto/EncodeAndPad';
+import { WapJidProps } from './proto/WapJidProps';
 
 const sessions = {};
 
@@ -58,6 +59,8 @@ export class WaClient {
 
     /** events */
     private onSocketClose: Function;
+
+    private devices: WapJidProps[];
 
     constructor({ sessionName, onSocketClose }: Props) {
         if (sessions[sessionName]) {
@@ -675,9 +678,24 @@ export class WaClient {
         }
     };
 
+    private handleDevices = (node: WapNode) => {
+        this.devices = [];
+        node.content.forEach((content: WapNode) => {
+            if (content.tag == 'device' && content.attrs && content.attrs.jid) {
+                this.devices.push(new WapJidProps(content.attrs.jid));
+            }
+        });
+    };
+
     private parseNotification = (stanza: WapNode) => {
-        console.log('recevied notification', stanza.content[0]);
-        console.log('devices', stanza.content[0].content);
+        stanza.content &&
+            stanza.content.forEach((node: WapNode) => {
+                switch (node.tag) {
+                    case 'devices':
+                        this.handleDevices(node);
+                        break;
+                }
+            });
     };
 
     private handleStanza = async (stanza: WapNode) => {
@@ -732,88 +750,65 @@ export class WaClient {
 
     private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {};
 
-    private sendMessage = async (jid: WapJid, message: WAProto.IMessage) => {
-        return
+    private sendMessage = async (jid: WapJid, message_: WAProto.IMessage) => {
         const deviceIdentity = await this.storageService.get('device-identity-bytes');
-        let destination = 'NUMERO';
-        let text = 'Hello world';
+        const destinationPhone = 'NUMERO';
+        const destinationJid = new WapJidProps(`${destinationPhone}@c.us`);
+        const message = { conversation: 'Hello World' };
+        const deviceSentMessage = {
+            deviceSentMessage: {
+                destinationJid: destinationJid.toString({
+                    legacy: !0,
+                }),
+                message,
+            },
+        };
 
-        const destinationEncoded = encodeAndPad({ conversation: text });
-        const destinationJid = WapJid.create(destination, 's.whatsapp.net', 0);
-        const destinationProto = await this.waSignal.encryptSignalProto(destinationJid, destinationEncoded);
+        const createWapNodeParticipant = async (body, jidProps, jidAd) => {
+            const encoded = encodeAndPad(body);
+            const proto = await this.waSignal.encryptSignalProto(jidProps, encoded);
+            return new WapNode(
+                'to',
+                {
+                    jid: jidAd,
+                },
+                [
+                    new WapNode(
+                        'enc',
+                        {
+                            v: '2',
+                            type: proto.type.toLowerCase(),
+                        },
+                        new Uint8Array(proto.ciphertext),
+                    ),
+                ],
+            );
+        };
 
-        const meDeviceEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
-        const meDeviceJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 14);
-        const meDeviceProto = await this.waSignal.encryptSignalProto(meDeviceJid, meDeviceEncoded);
+        const participants: WapNode[] = [];
 
-        const mePhoneEncoded = encodeAndPad({ deviceSentMessage: { destinationJid: destination + '@s.whatsapp.net', message: { conversation: text } } });
-        const mePhoneJid = WapJid.create(this.me.getUser(), 's.whatsapp.net', 0);
-        const mePhoneProto = await this.waSignal.encryptSignalProto(mePhoneJid, mePhoneEncoded);
+        participants.push(await createWapNodeParticipant(message, destinationJid, WapJid.createAD(destinationPhone, 0, 0, true)));
+
+        for (let index = 0; index < (this.devices || []).length; index++) {
+            const device = this.devices[index];
+            if (device.getDeviceId() != this.me.getDevice()) {
+                const props = new WapJidProps(device._serialized);
+                participants.push(await createWapNodeParticipant(deviceSentMessage, props, WapJid.createAD(props.user, props.agent, props.device, true)));
+            }
+        }
 
         const stanza = new WapNode(
             'message',
             {
-                id: '3EB06F7B2BB05CDB2F5323435',
+                id: '3EB06F7B2BB05CDB2F5323437',
                 type: 'text',
-                to: WapJid.create(destination, 's.whatsapp.net'),
+                to: WapJid.create(destinationPhone, 's.whatsapp.net'),
             },
-            [
-                new WapNode('participants', {}, [
-                    new WapNode(
-                        'to',
-                        {
-                            jid: WapJid.createAD(destination, 0, 0),
-                        },
-                        [
-                            new WapNode(
-                                'enc',
-                                {
-                                    v: '2',
-                                    type: destinationProto.type.toLowerCase(),
-                                },
-                                new Uint8Array(destinationProto.ciphertext),
-                            ),
-                        ],
-                    ),
-                    new WapNode(
-                        'to',
-                        {
-                            jid: WapJid.createAD(this.me.getUser(), 0, 14),
-                        },
-                        [
-                            new WapNode(
-                                'enc',
-                                {
-                                    v: '2',
-                                    type: meDeviceProto.type.toLowerCase(),
-                                },
-                                new Uint8Array(meDeviceProto.ciphertext),
-                            ),
-                        ],
-                    ),
-                    new WapNode(
-                        'to',
-                        {
-                            jid: WapJid.createAD(this.me.getUser(), 0, 0),
-                        },
-                        [
-                            new WapNode(
-                                'enc',
-                                {
-                                    v: '2',
-                                    type: mePhoneProto.type.toLowerCase(),
-                                },
-                                new Uint8Array(mePhoneProto.ciphertext),
-                            ),
-                        ],
-                    ),
-                ]),
-                new WapNode('device-identity', {}, new Uint8Array(deviceIdentity)),
-            ],
+            [new WapNode('participants', {}, participants), new WapNode('device-identity', {}, new Uint8Array(deviceIdentity))],
         );
 
         const frame = encodeStanza(stanza);
-        this.socketConn.sendFrame(frame);
+         this.socketConn.sendFrame(frame);
     };
 
     private createKeepAlive = () => {
