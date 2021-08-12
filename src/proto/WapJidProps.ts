@@ -65,6 +65,11 @@ export class WapJidProps {
     }
     return this.user.slice(-4);
   }
+
+  getUser() {
+    return this.user
+  }
+
   toString(e?) {
     if (e) {
       var t,

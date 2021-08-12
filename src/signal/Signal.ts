@@ -18,7 +18,6 @@ export class WaSignal {
         const newPub = new Uint8Array(33);
         newPub.set([5], 0);
         newPub.set(pubKey, 1);
-
         return newPub;
     };
 
@@ -131,6 +130,10 @@ export class WaSignal {
         return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
     };
 
+    hasSession(user: WapJid) {
+        return this.storageSignal.hasSession(this.createLibSignalAddress(user));
+    }
+
     decryptSignalProto = async (e, t, r) => {
         try {
             const session = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
@@ -162,7 +165,7 @@ export class WaSignal {
 
     /** whatsapp web file qr: line 36027 */
     strToBuffer = function (e) {
-        return ByteBuffer.wrap(e,"binary").toArrayBuffer()
+        return ByteBuffer.wrap(String.fromCharCode.apply(null, e), 'binary').toArrayBuffer();
     };
 
     encryptSignalProto = async (e, t) => {
@@ -170,13 +173,18 @@ export class WaSignal {
 
         return Promise.resolve(r)
             .then((e) => {
-                return e.encrypt(Buffer.from(t))
+                return e.encrypt(Buffer.from(t));
             })
             .then(({ type: e, body: t }) => {
                 return {
-                    type: 3 === e ? 'pkmsg' : 'Msg',
+                    type: 3 === e ? 'pkmsg' : 'msg',
                     ciphertext: this.strToBuffer(t),
-                }
+                };
             });
     };
+
+    async createSignalSession(jid: WapJid, device: any) {
+        const session = new libsignal.SessionBuilder(this.storageSignal, this.createLibSignalAddress(jid));
+        await session.initOutgoing(device);
+    }
 }

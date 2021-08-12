@@ -358,7 +358,7 @@ export const encodeAndPad = (e) => {
     return writeRandomPadMax16(t), t.readByteArray();
 };
 
-const writeRandomPadMax16 = function (e) {
+export const writeRandomPadMax16 = function (e) {
     function r(e, t) {
         for (var r = 0; r < t; r++) e.writeUint8(t);
     }

@@ -29,7 +29,10 @@ export class StorageService {
         this.writeStorage();
     }
 
-    public get<T = any>(key: string): T {
+    public get<T = any>(key: string, onlyMemory = false): T {
+        if (onlyMemory) {
+            return this.storageMemory[key] ?? null;
+        }
         return this.storage[key] ?? null;
     }
 

@@ -2,6 +2,7 @@ import { KeyPair, PreKey } from '../utils/Curve';
 import { SignedKeyPair } from './../utils/Curve';
 import { StorageService } from '../services/StorageService';
 import libsignal from 'libsignal';
+import { WapJid } from '../proto/WapJid';
 
 export class StorageSignal {
     constructor(public storageService: StorageService) {}
@@ -10,6 +11,10 @@ export class StorageSignal {
         SENDING: 1;
         RECEIVING: 2;
     };
+
+    getOurRegistrationId() {
+        return this.storageService.get<number>('registrationId');
+    }
 
     getOurIdentity() {
         const signedIdentityKey = this.storageService.get<KeyPair>('signedIdentityKey');
@@ -121,5 +126,10 @@ export class StorageSignal {
 
     async removeAllSessions() {
         await this.storageService.save('sessions', {}, true);
+    }
+
+    async hasSession(identifier) {
+        const sessions = await this.storageService.get('sessions', true);
+        return !!sessions[identifier]
     }
 }

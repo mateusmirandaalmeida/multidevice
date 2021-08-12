@@ -14,7 +14,6 @@ export class WapJid {
 
     private _jid: WapJidProps;
     // private jid: WapJidProps;
-    private _serialized: string;
 
     constructor(jid: WapJidProps) {
         // this._jid = jid;
