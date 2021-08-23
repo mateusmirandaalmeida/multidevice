@@ -26,6 +26,7 @@ import { WapJidProps } from './proto/WapJidProps';
 
 import * as Crypto from 'crypto';
 import { e2eSessionParser, retryRequestParser } from './proto/retry-parser';
+import { deviceParser } from './proto/ProtoParsers';
 
 const crypto = Crypto.webcrypto as any;
 
@@ -890,14 +891,14 @@ export class WaClient {
                         buttonText: {
                             displayText: 'Sim',
                         },
-                        type: 1
+                        type: 1,
                     },
                     {
                         buttonId: '2',
                         buttonText: {
                             displayText: 'Não',
                         },
-                        type: 1
+                        type: 1,
                     },
                 ],
             },
@@ -915,8 +916,8 @@ export class WaClient {
         const createWapNodeParticipant = async (body, jidProps: WapJidProps, jidAd, forceNewSession = false) => {
             // const encoded = encodeAndPad(body);
             const encodedMessage = new Binary(WAProto.Message.encode(body).finish());
-            writeRandomPadMax16(encodedMessage)
-            const encoded = encodedMessage.readByteArray()
+            writeRandomPadMax16(encodedMessage);
+            const encoded = encodedMessage.readByteArray();
             await this.ensureIdentityUser(WapJid.createAD(jidProps.getUser(), jidProps.agent, jidProps.device, false), forceNewSession);
             const proto = await this.waSignal.encryptSignalProto(jidProps, encoded);
             return new WapNode(
@@ -943,6 +944,28 @@ export class WaClient {
 
         participants.push(await createWapNodeParticipant(deviceSentMessage, new WapJidProps(`${this.me.getUser()}@c.us`), WapJid.createAD(this.me.getUser(), 0, 0, true), true));
 
+
+        const devices: WapJid[] = await this.getUSyncDevices([
+            WapJid.createAD(destinationPhone, 0, 0),
+            WapJid.createAD(this.me.getUser(), 0, 0),
+          ]);
+
+          for (let index = 0; index < devices.length; index++) {
+            const device = devices[index];
+            const participant = await createWapNodeParticipant(
+              deviceSentMessage,
+              new WapJidProps(device.toString()),
+              WapJid.createAD(
+                device.getUser(),
+                device.getAgent(),
+                device.getDevice(),
+              ),
+            );
+            if (participant) {
+              participants.push(participant);
+            }
+          }
+
         function generateMessageID() {
             var r = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];
             var e = new Uint8Array(8);
@@ -968,6 +991,66 @@ export class WaClient {
 
         const frame = encodeStanza(stanza);
         this.socketConn.sendFrame(frame);
+    };
+
+    protected getUSyncDevices = async (jids: WapJid[]): Promise<any> => {
+        const users = jids.map((jid) => {
+            return new WapNode(
+                'user',
+                {
+                    jid,
+                },
+                null,
+            );
+        });
+
+        const iq = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: S_WHATSAPP_NET,
+                type: 'get',
+                xmlns: 'usync',
+            },
+            [
+                new WapNode(
+                    'usync',
+                    {
+                        sid: generateId(),
+                        mode: 'query',
+                        last: 'true',
+                        index: '0',
+                        context: 'message',
+                    },
+                    [new WapNode('query', {}, [new WapNode('devices', { version: '2' }, null)]), new WapNode('list', {}, users)],
+                ),
+            ],
+        );
+        const resultFrame: any = await this.sendMessageAndWait(iq);
+        const devicesToReturn = [];
+        for (let index = 0; index < resultFrame.content.length; index++) {
+            const result: WapNode = resultFrame.content[index];
+            const list = result.content.find((node) => node.tag == 'list');
+            if (list) {
+                for (let index = 0; index < (list.content || []).length; index++) {
+                    const user: WapNode = list.content[index];
+                    const userJid: WapJid = user.attrs.jid;
+                    for (let index = 0; index < user.content.length; index++) {
+                        const devices = deviceParser(user.content[index], this.me);
+                        if (devices && devices.deviceList && devices.deviceList.length > 0) {
+                            for (let index = 0; index < devices.deviceList.length; index++) {
+                                const device = devices.deviceList[index];
+                                const jid = WapJid.createAD(userJid.getUser(), 0, device.id);
+                                if (jid.getDevice() != 0 && this.me.getDevice() != jid.getDevice()) {
+                                    devicesToReturn.push(jid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return devicesToReturn;
     };
 
     private createKeepAlive = () => {

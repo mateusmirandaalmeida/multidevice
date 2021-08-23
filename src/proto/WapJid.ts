@@ -58,6 +58,11 @@ export class WapJid {
         return this._jid.device;
     }
 
+
+    getAgent() {
+        return this._jid.agent;
+    }
+
     getInnerJid() {
         return this._jid;
     }
