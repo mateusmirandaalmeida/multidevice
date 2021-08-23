@@ -39,13 +39,17 @@ export class WapJid {
 
     toString() {
         if (this.jid.type === WapJid.JID_AD) {
-            var { user: e, agent: t, device: r } = this.jid,
-                n = USER_JID_SUFFIX;
-            return 0 === t && 0 === r ? `${e}@${n}` : 0 !== t && 0 === r ? `${e}.${t}@${n}` : 0 === t && 0 !== r ? `${e}:${r}@${n}` : `${e}.${t}:${r}@${n}`;
+            var { user, agent, device } = this.jid;
+            let jid: string;
+            if (!agent && !device) jid = `${user}@${USER_JID_SUFFIX}`;
+            else if (agent && !device) jid = `${user}.${agent}@${USER_JID_SUFFIX}`;
+            else if (!agent && device) jid = `${user}:${device}@${USER_JID_SUFFIX}`;
+            else jid = `${user}.${agent}:${device}@${USER_JID_SUFFIX}`
+            return jid;
         }
         this.jid.type;
-        var { user: s, server: o } = this.jid;
-        return null != s ? `${s}@${o}` : o;
+        var { user, server } = this.jid;
+        return null != user ? `${user}@${server}` : server;
     }
 
     getUser() {
@@ -69,8 +73,8 @@ export class WapJid {
         return 'broadcast' === this.jid.server;
     }
     getSignalAddress() {
-        const e = null != this.jid.agent && 0 !== this.jid.agent ? `_${this.jid.agent}` : '',
-            t = null != this.jid.device && 0 !== this.jid.device ? `:${this.jid.device}` : '';
+        const e = this.jid.agent && this.jid.agent ? `_${this.jid.agent}` : '',
+            t = this.jid.device && this.jid.device ? `:${this.jid.device}` : '';
         return [this.jid.user, e, t].join('');
     }
     isOfficialBizAccount() {
