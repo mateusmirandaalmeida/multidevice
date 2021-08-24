@@ -1,4 +1,16 @@
-import { randomBytes, areBuffersEqual, HEADER, CERT_ISSUER, BIG_ENDIAN_CONTENT, KEY_BUNDLE_TYPE, xmppPreKey, xmppSignedPreKey, MESSAGE_TYPE, writeRandomPadMax16, unpadRandomMax16 } from './utils/Utils';
+import {
+    randomBytes,
+    areBuffersEqual,
+    HEADER,
+    CERT_ISSUER,
+    BIG_ENDIAN_CONTENT,
+    KEY_BUNDLE_TYPE,
+    xmppPreKey,
+    xmppSignedPreKey,
+    MESSAGE_TYPE,
+    writeRandomPadMax16,
+    unpadRandomMax16,
+} from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
@@ -62,6 +74,7 @@ export class WaClient {
     private advSecretKey: string;
     private deviceIdentityBytes: any;
     private socketWaitIqs = {};
+    private decryptRetryCount = {};
 
     /** events */
     private onSocketClose: Function;
@@ -661,22 +674,30 @@ export class WaClient {
         for (const enc of encMap) {
             switch (enc.e2eType) {
                 case 'skmsg':
-                    console.log('skmsg');
-                    await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
+                    try {
+                        console.log('skmsg');
+                        await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
+                    } catch (e) {
+                        this.sendRetryReceipt(node);
+                    }
                     break;
                 case 'pkmsg':
                 case 'msg':
-                    const s = getFrom(msgInfo);
-                    const n = s.isUser() ? s : msgInfo.author;
+                    try {
+                        const s = getFrom(msgInfo);
+                        const n = s.isUser() ? s : msgInfo.author;
 
-                    const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
+                        const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
 
-                    const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
+                        const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
 
-                    console.log('decryptMessage', {
-                        ...msgInfo,
-                        ...messageProto,
-                    });
+                        console.log('decryptMessage', {
+                            ...msgInfo,
+                            ...messageProto,
+                        });
+                    } catch (e) {
+                        this.sendRetryReceipt(node);
+                    }
                     break;
 
                 default:
@@ -684,6 +705,55 @@ export class WaClient {
             }
         }
     };
+
+    private async sendRetryReceipt(node: WapNode) {
+        const isGroup = !!node.attrs.participant;
+        const registrationInfo = {
+            registrationId: await this.storageSignal.getOurRegistrationId(),
+            identityKeyPair: await this.storageSignal.getOurIdentity(),
+        };
+        const identityKey = this.signedIdentityKey;
+        const signedPreKey = this.signedPreKey;
+        const account = await this.storageService.get('account');
+        const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
+        const key = await this.waSignal.getOrGenSinglePreKey();
+        const count = this.decryptRetryCount[node.attrs.id] || 1;
+        const receipt = new WapNode(
+            'receipt',
+            {
+                id: node.attrs.id,
+                type: 'retry',
+                ...(node.attrs.recipient ? { recipient: node.attrs.recipient } : {}),
+                ...(node.attrs.participant ? { participant: node.attrs.participant } : {}),
+                to: isGroup ? node.attrs.from : WapJid.createAD(node.attrs.from._jid.user, 0, node.attrs.from._jid.device || 0, true),
+            },
+            [
+                new WapNode(
+                    'retry',
+                    {
+                        count: `${count}`,
+                        id: node.attrs.id,
+                        t: node.attrs.t,
+                        v: '1',
+                    },
+                    null,
+                ),
+                new WapNode('registration', {}, BIG_ENDIAN_CONTENT(registrationInfo.registrationId)),
+                ...(count > 1
+                    ? [
+                          new WapNode('keys', {}, [
+                              new WapNode('type', {}, new Uint8Array([Buffer.from(this.waSignal.toSignalCurvePubKey(KEY_BUNDLE_TYPE))[0]])),
+                              new WapNode('identity', {}, identityKey.pubKey),
+                              xmppPreKey(key),
+                              xmppSignedPreKey(signedPreKey),
+                              new WapNode('device-identity', {}, new Uint8Array(deviceIdentity)),
+                          ]),
+                      ]
+                    : []),
+            ],
+        );
+        this.sendMessageAndWait(receipt);
+    }
 
     private handleDevices = (node: WapNode) => {
         this.devices = [];
@@ -894,7 +964,7 @@ export class WaClient {
                 ],
             },*/
         };
-        
+
         // const message: WAProto.IMessage = { conversation: `Enviando mensagem pela ${count} vez`  };
         const deviceSentMessage = {
             deviceSentMessage: {
@@ -943,7 +1013,11 @@ export class WaClient {
 
             const isMe = device.getUser() == this.me.getUser();
 
-            const participant = await createWapNodeParticipant(isMe ? deviceSentMessage : message, new WapJidProps(device.toString()), WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()));
+            const participant = await createWapNodeParticipant(
+                isMe ? deviceSentMessage : message,
+                new WapJidProps(device.toString()),
+                WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()),
+            );
             if (participant) {
                 participants.push(participant);
             }

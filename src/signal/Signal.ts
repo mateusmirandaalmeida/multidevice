@@ -78,6 +78,14 @@ export class WaSignal {
         return true;
     };
 
+    getOrGenSinglePreKey() {
+        return this.getOrGenPreKeys(1).then((e) => {
+          if (1 !== e.length)
+            throw Error('Expected to get exactly one key but got ${keys.length}');
+          return e[0];
+        });
+      }
+
     getOrGenPreKeys = async (range: number) => {
         const firstUnuploadedId = (await this.getMeta('firstUnuploadedId')) ?? 1;
         const nextPreKeyId = (await this.getMeta('nextPreKeyId')) ?? 1;
