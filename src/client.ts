@@ -868,7 +868,7 @@ export class WaClient {
         // }
 
         const account = await this.storageService.get('account');
-        const destinationPhone = '5515981778671';
+        const destinationPhone = 'NUMBER';
         const destinationJid = new WapJidProps(`${destinationPhone}@c.us`);
         const message: WAProto.IMessage = {
             conversation: `ola mundo ${count}`,
