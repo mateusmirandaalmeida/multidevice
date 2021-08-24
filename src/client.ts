@@ -1,4 +1,4 @@
-import { randomBytes, areBuffersEqual, HEADER, CERT_ISSUER, BIG_ENDIAN_CONTENT, KEY_BUNDLE_TYPE, xmppPreKey, xmppSignedPreKey, MESSAGE_TYPE } from './utils/Utils';
+import { randomBytes, areBuffersEqual, HEADER, CERT_ISSUER, BIG_ENDIAN_CONTENT, KEY_BUNDLE_TYPE, xmppPreKey, xmppSignedPreKey, MESSAGE_TYPE, writeRandomPadMax16, unpadRandomMax16 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
@@ -21,7 +21,6 @@ import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
-import { encodeAndPad, writeRandomPadMax16 } from './proto/EncodeAndPad';
 import { WapJidProps } from './proto/WapJidProps';
 
 import * as Crypto from 'crypto';
@@ -262,6 +261,27 @@ export class WaClient {
         this.socketConn.sendFrame(encodeStanza(stanza));
     };
 
+    private sendNotAuthozired(id: string) {
+        this.socketConn.sendFrame(
+            encodeStanza(
+                new WapNode(
+                    'iq',
+                    {
+                        to: S_WHATSAPP_NET,
+                        type: 'error',
+                        id,
+                    },
+                    [
+                        new WapNode('error', {
+                            code: '401',
+                            text: 'not-authorized',
+                        }),
+                    ],
+                ),
+            ),
+        );
+    }
+
     private parsePairDevice = async (node: WapNode) => {
         //var e = 6 === _.length ? 6e4 : 2e4
         const refs = node.content[0].content.map((node: WapNode) => {
@@ -344,33 +364,13 @@ export class WaClient {
             return;
         }
 
-        const sendNotAuthozired = () =>
-            this.socketConn.sendFrame(
-                encodeStanza(
-                    new WapNode(
-                        'iq',
-                        {
-                            to: S_WHATSAPP_NET,
-                            type: 'error',
-                            id,
-                        },
-                        [
-                            new WapNode('error', {
-                                code: '401',
-                                text: 'not-authorized',
-                            }),
-                        ],
-                    ),
-                ),
-            );
-
         const advSecret = decodeB64(await this.storageService.get('advSecretKey'));
         const advSign = await hmacSha256(advSecret, details);
 
         if (encodeB64(hmac) !== encodeB64(new Uint8Array(advSign))) {
             console.log('invalid hmac from pair-device success');
 
-            sendNotAuthozired();
+            this.sendNotAuthozired(id);
             // TODO MAKE CLEAR THE STORAGE KEYS
             return;
         }
@@ -386,7 +386,7 @@ export class WaClient {
 
         if (!this.verifyDeviceIdentityAccountSignature(account, identityKeyPair)) {
             console.log('invalid device signature');
-            sendNotAuthozired();
+            this.sendNotAuthozired(id);
             return;
         }
 
@@ -658,24 +658,11 @@ export class WaClient {
 
         const getFrom = (msg: any) => (msg.type == MESSAGE_TYPE.CHAT ? msg.author : msg.chat);
 
-        const unpad = (e) => {
-            const t = new Uint8Array(e);
-            if (0 === t.length) {
-                throw new Error('unpadPkcs7 given empty bytes');
-            }
-
-            var r = t[t.length - 1];
-            if (r > t.length) {
-                throw new Error(`unpad given ${t.length} bytes, but pad is ${r}`);
-            }
-
-            return new Uint8Array(t.buffer, t.byteOffset, t.length - r);
-        };
-
         for (const enc of encMap) {
             switch (enc.e2eType) {
                 case 'skmsg':
                     console.log('skmsg');
+                    await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
                     break;
                 case 'pkmsg':
                 case 'msg':
@@ -684,7 +671,7 @@ export class WaClient {
 
                     const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
 
-                    const messageProto = WAProto.Message.decode(unpad(result));
+                    const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
 
                     console.log('decryptMessage', {
                         ...msgInfo,
@@ -722,6 +709,7 @@ export class WaClient {
         if (!(stanza instanceof WapNode)) {
             return null;
         }
+
         const tag = stanza.tag;
         console.log('received tag node', tag);
 
@@ -802,7 +790,7 @@ export class WaClient {
                 const receipt = new WapNode(
                     'ack',
                     {
-                        id: CUSTOM_STRING(d),
+                        id: d,
                         to: JID(a),
                         // participant: s ? DEVICE_JID(s) : { sentinel: 'DROP_ATTR' },
                         class: 'receipt',
@@ -810,6 +798,7 @@ export class WaClient {
                     },
                     null,
                 );
+
                 this.socketConn.sendFrame(encodeStanza(receipt));
             }
         }
@@ -827,6 +816,7 @@ export class WaClient {
         if (!forceNewSession && sessionStorage) {
             return;
         }
+
         const userIdentity = new WapNode(
             'user',
             {
@@ -835,6 +825,7 @@ export class WaClient {
             },
             null,
         );
+
         const stanza = new WapNode(
             'iq',
             {
@@ -845,30 +836,30 @@ export class WaClient {
             },
             [new WapNode('key', {}, [userIdentity])],
         );
+
         const result = await this.sendMessageAndWait(stanza);
-        const e = await e2eSessionParser(result, this.me);
-        var p = {
-            registrationId: e.regId,
-            identityKey: Buffer.from(this.waSignal.toSignalCurvePubKey(e.identity)),
+        const session = await e2eSessionParser(result, this.me);
+
+        const device = {
+            registrationId: session.regId,
+            identityKey: Buffer.from(this.waSignal.toSignalCurvePubKey(session.identity)),
             signedPreKey: {
-                keyId: e.skey.id,
-                publicKey: Buffer.from(this.waSignal.toSignalCurvePubKey(e.skey.pubkey)),
-                signature: e.skey.signature,
+                keyId: session.skey.id,
+                publicKey: Buffer.from(this.waSignal.toSignalCurvePubKey(session.skey.pubkey)),
+                signature: session.skey.signature,
             },
-            ...(e.key
+            ...(session.key
                 ? {
                       preKey: {
-                          keyId: e.key.id,
-                          publicKey: Buffer.from(this.waSignal.toSignalCurvePubKey(e.key.pubkey)),
+                          keyId: session.key.id,
+                          publicKey: Buffer.from(this.waSignal.toSignalCurvePubKey(session.key.pubkey)),
                       },
                   }
                 : {}),
         };
 
-        await this.waSignal.createSignalSession(user, p);
+        await this.waSignal.createSignalSession(user, device);
     }
-
-    private createFanoutStanza = async (message: WAProto.IMessage, devices: any, options?: any) => {};
 
     private sendMessage = async (jid: WapJid, message_: WAProto.IMessage, count) => {
         // return
@@ -877,11 +868,11 @@ export class WaClient {
         // }
 
         const account = await this.storageService.get('account');
-        const destinationPhone = 'NUMERO DE DESTINO';
+        const destinationPhone = '5515981778671';
         const destinationJid = new WapJidProps(`${destinationPhone}@c.us`);
         const message: WAProto.IMessage = {
-            // conversation: 'ola mundo',
-            buttonsMessage: {
+            conversation: `ola mundo ${count}`,
+            /*buttonsMessage: {
                 headerType: 1,
                 contentText: 'oi',
                 footerText: 'oi 2',
@@ -901,8 +892,9 @@ export class WaClient {
                         type: 1,
                     },
                 ],
-            },
+            },*/
         };
+        
         // const message: WAProto.IMessage = { conversation: `Enviando mensagem pela ${count} vez`  };
         const deviceSentMessage = {
             deviceSentMessage: {
@@ -944,27 +936,18 @@ export class WaClient {
 
         participants.push(await createWapNodeParticipant(deviceSentMessage, new WapJidProps(`${this.me.getUser()}@c.us`), WapJid.createAD(this.me.getUser(), 0, 0, true), true));
 
+        const devices: WapJid[] = await this.getUSyncDevices([WapJid.createAD(destinationPhone, 0, 0), WapJid.createAD(this.me.getUser(), 0, 0)]);
 
-        const devices: WapJid[] = await this.getUSyncDevices([
-            WapJid.createAD(destinationPhone, 0, 0),
-            WapJid.createAD(this.me.getUser(), 0, 0),
-          ]);
-
-          for (let index = 0; index < devices.length; index++) {
+        for (let index = 0; index < devices.length; index++) {
             const device = devices[index];
-            const participant = await createWapNodeParticipant(
-              deviceSentMessage,
-              new WapJidProps(device.toString()),
-              WapJid.createAD(
-                device.getUser(),
-                device.getAgent(),
-                device.getDevice(),
-              ),
-            );
+
+            const isMe = device.getUser() == this.me.getUser();
+
+            const participant = await createWapNodeParticipant(isMe ? deviceSentMessage : message, new WapJidProps(device.toString()), WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()));
             if (participant) {
-              participants.push(participant);
+                participants.push(participant);
             }
-          }
+        }
 
         function generateMessageID() {
             var r = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];

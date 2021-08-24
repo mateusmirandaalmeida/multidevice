@@ -5,12 +5,10 @@ import { WapJid } from './../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
 import ByteBuffer from 'bytebuffer';
-
 interface IIdentity {
     identifier: ProtocolAddress;
     identifierKey: Key;
 }
-
 export class WaSignal {
     constructor(public storageService: StorageService, public storageSignal: StorageSignal) {}
 
@@ -133,6 +131,39 @@ export class WaSignal {
     hasSession(user: WapJid) {
         return this.storageSignal.hasSession(this.createLibSignalAddress(user));
     }
+
+    decryptGroupSignalProto = async (group, author, data) => {
+        /*try {
+            const record = new libsignal.SenderKeyRecord();
+            const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
+            this.storageSignal.storeSenderKey(senderName, record);
+
+            const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
+            //const keys = await builder.create(senderName);
+            //id, iteration, chainKey, keyPair
+
+            const senderKeyMessage = new libsignal.SenderKeyMessage(null, null, null, null, data);
+            console.log('senderKeyMessage', senderKeyMessage);
+            //record.setSenderKeyState(senderKeyMessage.getId(), senderKeyMessage.getIteration(), keys.getChainKey(), keys.getSignatureKey());
+
+            const session = new libsignal.GroupCipher(this.storageSignal, senderName);
+
+            const result = await session.decrypt(data);
+
+            console.log('result', result);
+        } catch (err) {
+            console.log('err', err);
+
+            throw err;
+        }*/
+
+        /*var a = new window.libsignal.GroupCipher((0,
+        s.default)(),e.toString({
+            legacy: !0
+        }),(0,
+        l.createSignalAddress)(t));
+        return Promise.resolve(a).then((e=>e.decryptSenderKeyMessage(r))).catch((e=>e && "MessageCounterError" === e.name ? Promise.reject(new i.SignalMessageCounterError(e)) : Promise.reject(new i.SignalDecryptionError(e))))*/
+    };
 
     decryptSignalProto = async (e, t, r) => {
         try {

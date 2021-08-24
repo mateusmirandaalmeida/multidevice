@@ -5,6 +5,9 @@ import libsignal from 'libsignal';
 import { WapJid } from '../proto/WapJid';
 
 export class StorageSignal {
+    private senderKeys = {};
+    private sessions = {};
+
     constructor(public storageService: StorageService) {}
 
     public static DIRECTION: {
@@ -75,15 +78,13 @@ export class StorageSignal {
     }
 
     async loadSession(identifier) {
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        }, true);
-
-        if (!sessions[identifier]) {
+        if (!this.sessions[identifier]) {
             return null;
         }
 
-        if (sessions[identifier]) {
+        return this.sessions[identifier];
+
+        /*if (sessions[identifier]) {
             return sessions[identifier]
             // const data = sessions[identifier];
             // const record = new libsignal.SessionRecord();
@@ -97,39 +98,34 @@ export class StorageSignal {
             //     record.sessions[key].registrationId = session.registrationId;
             // });
             // return record;
-        }
+        }*/
 
         return null;
     }
 
+    async loadSenderKey(senderKey) {
+        return this.senderKeys[senderKey] ?? null;
+    }
+
+    async storeSenderKey(senderKey, record) {
+        return this.senderKeys[senderKey] = record;
+    }
+
     async storeSession(identifier, record) {
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        }, true);
-
-        sessions[identifier] = record;
-
-        await this.storageService.save('sessions', sessions, true);
+        this.sessions[identifier] = record;
     }
 
     async removeSession(identifier) {
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        }, true);
-
-        if (sessions[identifier]) {
-            delete sessions[identifier];
+        if (this.sessions[identifier]) {
+            delete this.sessions[identifier];
         }
-
-        await this.storageService.save('sessions', sessions, true);
     }
 
     async removeAllSessions() {
-        await this.storageService.save('sessions', {}, true);
+        this.sessions = {};
     }
 
     async hasSession(identifier) {
-        const sessions = await this.storageService.get('sessions', true);
-        return !!sessions[identifier]
+        return !!this.sessions[identifier]
     }
 }
