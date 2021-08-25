@@ -677,7 +677,14 @@ export class WaClient {
                 case 'skmsg':
                     try {
                         console.log('skmsg');
-                        await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
+                        const result = await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
+
+                        const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
+
+                        console.log('decryptGroupMessage', {
+                            ...msgInfo,
+                            ...messageProto,
+                        });
                     } catch (e) {
                         this.sendRetryReceipt(node);
                     }
@@ -695,8 +702,6 @@ export class WaClient {
                         if (messageProto.senderKeyDistributionMessage) {
                             await this.waSignal.processSenderKeyDistributionMessage(msgInfo.chat, msgInfo.author, messageProto.senderKeyDistributionMessage);
                         }
-
-                        console.log('batata', messageProto);
 
                         console.log('decryptMessage', {
                             ...msgInfo,

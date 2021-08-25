@@ -146,31 +146,27 @@ export class WaSignal {
 
         const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
 
-        console.log('processSenderKeyDistributionMessage::senderName', senderName);
+        //console.log('processSenderKeyDistributionMessage::senderName', senderName);
 
         const senderMsg = new libsignal.SenderKeyDistributionMessage(null, null, null, null, senderKeyDistributionMessage.axolotlSenderKeyDistributionMessage);
 
-        const record = new libsignal.SenderKeyRecord();
-        this.storageSignal.storeSenderKey(senderName, record);
+        if (!(await this.storageSignal.loadSenderKey(senderName))) {
+            const record = new libsignal.SenderKeyRecord();
+            this.storageSignal.storeSenderKey(senderName, record);
+        }
 
         await builder.process(senderName, senderMsg);
     }
 
     decryptGroupSignalProto = async (group, author, data) => {
         try {
-            //const record = new libsignal.SenderKeyRecord();
             const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
-            //this.storageSignal.storeSenderKey(senderName, record);
+            //console.log('decryptGroupSignalProto::senderName', senderName);
+            //console.log('decryptGroupSignalProto::session', await this.storageSignal.loadSenderKey(senderName));
 
-            console.log('decryptGroupSignalProto::senderName', senderName);
-            console.log('decryptGroupSignalProto::session', await this.storageSignal.loadSenderKey(senderName));
-
-            //const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
             const session = new libsignal.GroupCipher(this.storageSignal, senderName);
 
-            const result = await session.decrypt(data);
-
-            console.log('result', result);
+            return session.decrypt(data);
         } catch (err) {
             console.log('err', err);
 
