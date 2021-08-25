@@ -39,6 +39,7 @@ import * as Crypto from 'crypto';
 import { e2eSessionParser, retryRequestParser } from './proto/retry-parser';
 import { deviceParser } from './proto/ProtoParsers';
 
+
 const crypto = Crypto.webcrypto as any;
 
 const sessions = {};
@@ -691,6 +692,12 @@ export class WaClient {
 
                         const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
 
+                        if (messageProto.senderKeyDistributionMessage) {
+                            await this.waSignal.processSenderKeyDistributionMessage(msgInfo.chat, msgInfo.author, messageProto.senderKeyDistributionMessage);
+                        }
+
+                        console.log('batata', messageProto);
+
                         console.log('decryptMessage', {
                             ...msgInfo,
                             ...messageProto,
@@ -712,12 +719,14 @@ export class WaClient {
             registrationId: await this.storageSignal.getOurRegistrationId(),
             identityKeyPair: await this.storageSignal.getOurIdentity(),
         };
+
         const identityKey = this.signedIdentityKey;
         const signedPreKey = this.signedPreKey;
         const account = await this.storageService.get('account');
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
         const key = await this.waSignal.getOrGenSinglePreKey();
         const count = this.decryptRetryCount[node.attrs.id] || 1;
+        
         const receipt = new WapNode(
             'receipt',
             {
@@ -1112,7 +1121,7 @@ export class WaClient {
 
     private createKeepAlive = () => {
         let count = 0;
-        setInterval(() => {
+        /*setInterval(() => {
             try {
                 console.log(`Enviando mensagem`);
                 count++;
@@ -1120,7 +1129,7 @@ export class WaClient {
             } catch (_) {
                 console.log('tretou enviar mensagem');
             }
-        }, 5000);
+        }, 5000);*/
 
         this.keepAliveTimer = setInterval(() => {
             console.log('send ping to server');

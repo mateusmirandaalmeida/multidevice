@@ -346,7 +346,7 @@ is-number@^7.0.0:
 
 "libsignal@github:pokearaujo/libsignal-node":
   version "2.0.1"
-  resolved "https://codeload.github.com/pokearaujo/libsignal-node/tar.gz/7969fc4cd8f7b14787f9f733f532324a91b0d844"
+  resolved "https://codeload.github.com/pokearaujo/libsignal-node/tar.gz/2cbef2d04e2879d3649f2c96e69398040bc2335a"
   dependencies:
     protobufjs "6.8.8"
 

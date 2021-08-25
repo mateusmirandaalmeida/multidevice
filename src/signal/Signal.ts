@@ -5,6 +5,7 @@ import { WapJid } from './../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
 import ByteBuffer from 'bytebuffer';
+import { proto as WAProto } from '../proto/WAMessage';
 interface IIdentity {
     identifier: ProtocolAddress;
     identifierKey: Key;
@@ -140,20 +141,31 @@ export class WaSignal {
         return this.storageSignal.hasSession(this.createLibSignalAddress(user));
     }
 
+    async processSenderKeyDistributionMessage(group, author, senderKeyDistributionMessage: WAProto.ISenderKeyDistributionMessage) {
+        const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
+
+        const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
+
+        console.log('processSenderKeyDistributionMessage::senderName', senderName);
+
+        const senderMsg = new libsignal.SenderKeyDistributionMessage(null, null, null, null, senderKeyDistributionMessage.axolotlSenderKeyDistributionMessage);
+
+        const record = new libsignal.SenderKeyRecord();
+        this.storageSignal.storeSenderKey(senderName, record);
+
+        await builder.process(senderName, senderMsg);
+    }
+
     decryptGroupSignalProto = async (group, author, data) => {
-        /*try {
-            const record = new libsignal.SenderKeyRecord();
+        try {
+            //const record = new libsignal.SenderKeyRecord();
             const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
-            this.storageSignal.storeSenderKey(senderName, record);
+            //this.storageSignal.storeSenderKey(senderName, record);
 
-            const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
-            //const keys = await builder.create(senderName);
-            //id, iteration, chainKey, keyPair
+            console.log('decryptGroupSignalProto::senderName', senderName);
+            console.log('decryptGroupSignalProto::session', await this.storageSignal.loadSenderKey(senderName));
 
-            const senderKeyMessage = new libsignal.SenderKeyMessage(null, null, null, null, data);
-            console.log('senderKeyMessage', senderKeyMessage);
-            //record.setSenderKeyState(senderKeyMessage.getId(), senderKeyMessage.getIteration(), keys.getChainKey(), keys.getSignatureKey());
-
+            //const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
             const session = new libsignal.GroupCipher(this.storageSignal, senderName);
 
             const result = await session.decrypt(data);
@@ -163,7 +175,7 @@ export class WaSignal {
             console.log('err', err);
 
             throw err;
-        }*/
+        }
 
         /*var a = new window.libsignal.GroupCipher((0,
         s.default)(),e.toString({
