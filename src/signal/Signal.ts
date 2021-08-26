@@ -81,11 +81,10 @@ export class WaSignal {
 
     getOrGenSinglePreKey() {
         return this.getOrGenPreKeys(1).then((e) => {
-          if (1 !== e.length)
-            throw Error('Expected to get exactly one key but got ${keys.length}');
-          return e[0];
+            if (1 !== e.length) throw Error('Expected to get exactly one key but got ${keys.length}');
+            return e[0];
         });
-      }
+    }
 
     getOrGenPreKeys = async (range: number) => {
         const firstUnuploadedId = (await this.getMeta('firstUnuploadedId')) ?? 1;
@@ -229,6 +228,27 @@ export class WaSignal {
                 };
             });
     };
+
+    async encryptSenderKeyMsgSignalProto(group, author, t) {
+        try {
+            const senderName = new libsignal.SenderKeyName(
+                group.toString({
+                    legacy: !0,
+                }),
+                this.createLibSignalAddress(author),
+            );
+            if (!(await this.storageSignal.loadSenderKey(senderName))) {
+                const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
+                const record = new libsignal.SenderKeyRecord();
+                await this.storageSignal.storeSenderKey(senderName, record);
+                await builder.create(senderName);
+            }
+            const session = new libsignal.GroupCipher(this.storageSignal, senderName);
+            return session.encrypt(t);
+        } catch (e) {
+            throw e;
+        }
+    }
 
     async createSignalSession(jid: WapJid, device: any) {
         const session = new libsignal.SessionBuilder(this.storageSignal, this.createLibSignalAddress(jid));
