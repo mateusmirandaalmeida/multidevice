@@ -187,7 +187,7 @@ export class WaClient {
         }
     };
 
-    private sendMessageAndWait(stanza: WapNode) {
+    private sendMessageAndWait(stanza: WapNode): Promise<WapNode> {
         return new Promise((resolve, reject) => {
             this.socketWaitIqs[stanza.attrs.id] = {
                 resolve,
@@ -1123,6 +1123,33 @@ export class WaClient {
         }
         return devicesToReturn;
     };
+
+    public async getGroupInfo(groupPhone: string) {
+        const stanza = new WapNode(
+          'iq',
+          {
+            id: generateId(),
+            type: 'get',
+            xmlns: 'w:g2',
+            to: WapJid.create(groupPhone, 'g.us'),
+          },
+          [new WapNode('query', { request: 'interactive' })],
+        );
+        const result = await this.sendMessageAndWait(stanza);
+        const group: WapNode = result.content[0];
+        const data = {
+          name: group.attrs.subject,
+          id: group.attrs.id,
+          creation: group.attrs.creation,
+          creator: group.attrs.creator,
+          participants: group.content
+            .filter((content: WapNode) => content.tag === 'participant')
+            .map((content: WapNode) => {
+              return content.attrs.jid;
+            }),
+        };
+        return data;
+      }
 
     private createKeepAlive = () => {
         let count = 0;
