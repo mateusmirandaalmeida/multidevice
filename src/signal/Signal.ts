@@ -237,14 +237,17 @@ export class WaSignal {
                 }),
                 this.createLibSignalAddress(author),
             );
+            const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
             if (!(await this.storageSignal.loadSenderKey(senderName))) {
-                const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
                 const record = new libsignal.SenderKeyRecord();
                 await this.storageSignal.storeSenderKey(senderName, record);
-                await builder.create(senderName);
             }
+            const senderKeyDistributionMessage = await builder.create(senderName);
             const session = new libsignal.GroupCipher(this.storageSignal, senderName);
-            return session.encrypt(t);
+            return {
+                ciphertext: await session.encrypt(t),
+                senderKeyDistributionMessage,
+            };
         } catch (e) {
             throw e;
         }

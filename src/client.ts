@@ -955,24 +955,28 @@ export class WaClient {
         const encoded = encodedMessage.readByteArray();
         const destination = WapJid.create(phone, 'g.us');
         try {
-            const proto = await this.waSignal.encryptSenderKeyMsgSignalProto(destination, this.me, encoded);
+            const { ciphertext, senderKeyDistributionMessage } = await this.waSignal.encryptSenderKeyMsgSignalProto(destination, this.me, encoded);
             const account = await this.storageService.get('account');
             const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
             const participants: WapNode[] = [];
             const groupData = await this.getGroupInfo(phone);
             const devices: WapJid[] = await this.getUSyncDevices(groupData.participants, false);
+
             for (let index = 0; index < devices.length; index++) {
                 const device = devices[index];
-                const participant = await this.createWapNodeParticipant(
-                    message,
-                    new WapJidProps(`${device.getUser()}@c.us`),
-                    WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()),
-                    true,
-                );
+                const msg: WAProto.IMessage = {
+                    senderKeyDistributionMessage: {
+                        groupId: `${phone}@g.us`,
+                        axolotlSenderKeyDistributionMessage: new Uint8Array(senderKeyDistributionMessage.serialize()),
+                    },
+                };
+                const e = WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice());
+                const participant = await this.createWapNodeParticipant(msg, new WapJidProps(`${device.getUser()}@c.us`), e);
                 if (participant) {
                     participants.push(participant);
                 }
             }
+
             const stanza = new WapNode(
                 'message',
                 {
@@ -989,12 +993,12 @@ export class WaClient {
                             v: '2',
                             type: 'skmsg',
                         },
-                        new Uint8Array(proto),
+                        new Uint8Array(ciphertext),
                     ),
                     new WapNode('device-identity', {}, deviceIdentity),
                 ],
             );
-            this.sendMessageAndWait(stanza)
+            this.sendMessageAndWait(stanza);
         } catch (e) {}
     }
 
