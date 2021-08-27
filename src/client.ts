@@ -1089,7 +1089,6 @@ export class WaClient {
             const encodedMessage = new Binary(WAProto.Message.encode(body).finish());
             writeRandomPadMax16(encodedMessage);
             const encoded = encodedMessage.readByteArray();
-            await this.ensureIdentityUser(jidAd, true);
             const proto = await this.waSignal.encryptSignalProto(jidAd, encoded);
             return new WapNode(
                 'to',
