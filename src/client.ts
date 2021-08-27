@@ -971,7 +971,7 @@ export class WaClient {
                     },
                 };
                 const e = WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice());
-                const participant = await this.createWapNodeParticipant(msg, new WapJidProps(`${device.getUser()}@c.us`), e);
+                const participant = await this.createWapNodeParticipant(msg, e);
                 if (participant) {
                     participants.push(participant);
                 }
@@ -1048,9 +1048,9 @@ export class WaClient {
 
         const participants: WapNode[] = [];
 
-        participants.push(await this.createWapNodeParticipant(message, destinationJid, WapJid.createAD(destinationPhone, 0, 0, true)));
+        participants.push(await this.createWapNodeParticipant(message, WapJid.createAD(destinationPhone, 0, 0, true)));
 
-        participants.push(await this.createWapNodeParticipant(deviceSentMessage, new WapJidProps(`${this.me.getUser()}@c.us`), WapJid.createAD(this.me.getUser(), 0, 0, true), true));
+        participants.push(await this.createWapNodeParticipant(deviceSentMessage, WapJid.createAD(this.me.getUser(), 0, 0, true)));
 
         const devices: WapJid[] = await this.getUSyncDevices([WapJid.createAD(destinationPhone, 0, 0), WapJid.createAD(this.me.getUser(), 0, 0)]);
 
@@ -1061,7 +1061,6 @@ export class WaClient {
 
             const participant = await this.createWapNodeParticipant(
                 isMe ? deviceSentMessage : message,
-                new WapJidProps(device.toString()),
                 WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()),
             );
             if (participant) {
@@ -1085,28 +1084,35 @@ export class WaClient {
         this.socketConn.sendFrame(frame);
     };
 
-    createWapNodeParticipant = async (body, jidProps: WapJidProps, jidAd, forceNewSession = false) => {
-        const encodedMessage = new Binary(WAProto.Message.encode(body).finish());
-        writeRandomPadMax16(encodedMessage);
-        const encoded = encodedMessage.readByteArray();
-        await this.ensureIdentityUser(WapJid.createAD(jidProps.getUser(), jidProps.agent, jidProps.device, false), forceNewSession);
-        const proto = await this.waSignal.encryptSignalProto(jidProps, encoded);
-        return new WapNode(
-            'to',
-            {
-                jid: jidAd,
-            },
-            [
-                new WapNode(
-                    'enc',
-                    {
-                        v: '2',
-                        type: proto.type.toLowerCase(),
-                    },
-                    new Uint8Array(proto.ciphertext),
-                ),
-            ],
-        );
+    createWapNodeParticipant = async (body, jidAd) => {
+        try {
+            const encodedMessage = new Binary(WAProto.Message.encode(body).finish());
+            writeRandomPadMax16(encodedMessage);
+            const encoded = encodedMessage.readByteArray();
+            const proto = await this.waSignal.encryptSignalProto(jidAd, encoded);
+            return new WapNode(
+                'to',
+                {
+                    jid: jidAd,
+                },
+                [
+                    new WapNode(
+                        'enc',
+                        {
+                            v: '2',
+                            type: proto.type.toLowerCase(),
+                        },
+                        new Uint8Array(proto.ciphertext),
+                    ),
+                ],
+            );
+        } catch (e) {
+            if (e && e.name == 'SessionError') {
+                await this.ensureIdentityUser(jidAd, true);
+                return this.createWapNodeParticipant(body, jidAd);
+            }
+            return null;
+        }
     };
 
     generateMessageID() {
