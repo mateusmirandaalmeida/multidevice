@@ -1,4 +1,4 @@
-import { KeyPair, PreKey } from '../utils/Curve';
+import { Key, KeyPair, PreKey } from '../utils/Curve';
 import { SignedKeyPair } from './../utils/Curve';
 import { StorageService } from '../services/StorageService';
 
@@ -57,7 +57,9 @@ export class StorageSignal {
     }
 
     async removePreKey(keyId) {
+        console.log('remove pre key', keyId);
         return;
+        
         const preKeys = this.storageService.get<PreKey[]>('preKeys');
         const index = preKeys.findIndex((preKey) => preKey.keyId == keyId);
         if (index != -1) {
@@ -76,6 +78,7 @@ export class StorageSignal {
     }
 
     async loadSession(identifier) {
+        console.log('loadSession', identifier);
         if (!this.sessions[identifier]) {
             return null;
         }
@@ -92,6 +95,7 @@ export class StorageSignal {
     }
 
     async storeSession(identifier, record) {
+        console.log('storeSession', identifier);
         this.sessions[identifier] = record;
     }
 

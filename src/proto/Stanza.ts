@@ -3,6 +3,7 @@ import { WapJid } from './WapJid';
 import { DICTIONARIES } from './../utils/Utils';
 import { WapNode } from './WapNode';
 import { Binary, numUtf8Bytes } from './Binary';
+import zlib from 'zlib';
 
 const LIST1 = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', '�', '�', '�', '�'];
 const LIST2 = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
@@ -239,7 +240,7 @@ export const buildWapNode = (e: any) => {
 };
 
 export const encodeStanza = (e) => {
-    console.log('will send to server', e);
+    //console.log('will send to server', e);
     const node = e instanceof WapNode ? e : buildWapNode(e);
 
     const data = new Binary();
@@ -253,6 +254,24 @@ export const encodeStanza = (e) => {
     result.set(dataArr, 1);
 
     return result;
+};
+
+export const unpackStanza = async (e): Promise<Binary> => {
+    let data = new Binary(e);
+    if (2 & data.readUint8()) {
+        return new Promise((res) => {
+            zlib.inflate(data.readByteArray(), (err, result) => {
+                if (err) {
+                    console.error('err to decode stanza');
+                    return;
+                }
+
+                res(new Binary(result));
+            });
+        });
+    }
+
+    return data;
 };
 
 let ID_COUNT = 1;

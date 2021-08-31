@@ -15,7 +15,7 @@ export class PairDeviceSuccessHandler extends Handler {
         const { details, hmac } = WAProto.ADVSignedDeviceIdentityHMAC.decode(data.deviceIdentity);
 
         if (!details || !hmac) {
-            console.log('invalid device details or hmac');
+            this.client.log('invalid device details or hmac');
             return;
         }
 
@@ -23,7 +23,7 @@ export class PairDeviceSuccessHandler extends Handler {
         const advSign = await hmacSha256(advSecret, details);
 
         if (encodeB64(hmac) !== encodeB64(new Uint8Array(advSign))) {
-            console.log('invalid hmac from pair-device success');
+            this.client.log('invalid hmac from pair-device success');
 
             this.client.sendNotAuthozired(data.id);
             // TODO MAKE CLEAR THE STORAGE KEYS
@@ -33,14 +33,14 @@ export class PairDeviceSuccessHandler extends Handler {
         const account = WAProto.ADVSignedDeviceIdentity.decode(details);
         const { accountSignatureKey, accountSignature } = account;
         if (!accountSignatureKey || !accountSignature) {
-            console.log('invalid accountSignature or accountSignatureKey');
+            this.client.log('invalid accountSignature or accountSignatureKey');
             return;
         }
 
         const identityKeyPair = await this.storageService.get('signedIdentityKey');
 
         if (!verifyDeviceIdentityAccountSignature(account, identityKeyPair)) {
-            console.log('invalid device signature');
+            this.client.log('invalid device signature');
             this.client.sendNotAuthozired(data.id);
             return;
         }
@@ -83,7 +83,7 @@ export class PairDeviceSuccessHandler extends Handler {
         this.socket.sendFrame(stanza);
         await this.storageService.save('me', data.wid);
 
-        this.client.emit('open', data.wid);
+        this.client.emit('authenticated', data.wid);
 
         return true;
     }

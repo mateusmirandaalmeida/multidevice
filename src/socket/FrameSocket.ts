@@ -70,7 +70,7 @@ export class FrameSocket {
 
         for (; currFrame && currIncoming.peek(this.peekSize.bind(this)); ) {
             const bytes = this.getBytesSize(currIncoming);
-            console.log(`FrameSocket.onFrame(${bytes} bytes)`);
+            //console.log(`FrameSocket.onFrame(${bytes} bytes)`);
 
             currFrame(currIncoming.readByteArray(bytes));
 

@@ -1,5 +1,5 @@
 import { Binary } from './Binary';
-import { WapJidProps } from './WapJidProps';
+import { Wid } from './Wid';
 
 var l = '@system';
 var p = 0;
@@ -120,7 +120,7 @@ class c {
         var t,
             r = this.attrString(e);
         try {
-            t = new WapJidProps(r);
+            t = new Wid(r);
         } catch (e) {}
         return t && t.isUser() ? t : this.throw(`to have "${e}"={DeviceJid}, but instead has "${r}"`);
     }
@@ -128,7 +128,7 @@ class c {
         var t,
             r = this.attrString(e);
         try {
-            t = new WapJidProps(r);
+            t = new Wid(r);
         } catch (e) {}
         return t && t.isUser() ? toUserWid(t) : this.throw(`to have "${e}"={UserJid}, but instead has "${r}"`);
     }
@@ -136,7 +136,7 @@ class c {
         var t,
             r = this.attrString(e);
         try {
-            t = new WapJidProps(r);
+            t = new Wid(r);
         } catch (e) {}
         return t ? toChatWid(t) : this.throw(`to have "${e}"={ChatJid}, but instead has "${r}"`);
     }
@@ -144,7 +144,7 @@ class c {
         var t,
             r = this.attrString(e);
         try {
-            t = new WapJidProps(r);
+            t = new Wid(r);
         } catch (e) {}
         return t && t.isGroup() ? t : this.throw(`to have "${e}"={GroupJid}, but instead has "${r}"`);
     }
@@ -152,7 +152,7 @@ class c {
         var t,
             r = this.attrString(e);
         try {
-            t = new WapJidProps(r);
+            t = new Wid(r);
         } catch (e) {}
         return t || this.throw(`to have "${e}"={JID}, but instead has "${r}"`);
     }

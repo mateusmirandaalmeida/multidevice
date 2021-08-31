@@ -11,29 +11,29 @@ import {
     writeRandomPadMax16,
     unpadRandomMax16,
     phashV2,
+    generateMessageID,
+    isGroupID,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
 import { toLowerCaseHex } from './utils/HexHelper';
 
-import zlib from 'zlib';
 import { generatePayloadRegister } from './payloads/RegisterPayload';
 import { Binary } from './proto/Binary';
-import { encodeStanza, generateId, decodeStanza, CUSTOM_STRING } from './proto/Stanza';
-import { calculateSignature, generateIdentityKeyPair, generateRegistrationId, generateSignedPreKey, Key, KeyPair, sharedKey, SignedKeyPair, verifySignature } from './utils/Curve';
+import { encodeStanza, generateId, decodeStanza, unpackStanza } from './proto/Stanza';
+import { generateIdentityKeyPair, generateRegistrationId, generateSignedPreKey, KeyPair, sharedKey, SignedKeyPair } from './utils/Curve';
 import { WapNode } from './proto/WapNode';
-import { decodeB64, encodeB64 } from './utils/Base64';
+import { encodeB64 } from './utils/Base64';
 import { S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
-import { hmacSha256 } from './utils/HKDF';
 import { proto as WAProto } from './proto/WAMessage';
 
 import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
 import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
-import { WapJidProps } from './proto/WapJidProps';
+import { Wid } from './proto/Wid';
 
 import * as Crypto from 'crypto';
 import { e2eSessionParser, retryRequestParser } from './proto/retry-parser';
@@ -48,6 +48,7 @@ const sessions = {};
 
 interface Props {
     sessionName: string;
+    log?: boolean;
     /**
      * @description Callback stops when socket is closed
      */
@@ -68,6 +69,7 @@ export class WaClient extends EventEmitter {
     private noise: NoiseHandshake;
     private me: WapJid;
     private socketConn: NoiseSocket;
+    private enableLog: boolean;
 
     private registrationId: number;
 
@@ -77,16 +79,15 @@ export class WaClient extends EventEmitter {
     private noiseKey: KeyPair;
     private signedPreKey: SignedKeyPair;
     private advSecretKey: string;
-    private deviceIdentityBytes: any;
     private socketWaitIqs = {};
     private decryptRetryCount = {};
 
     /** events */
     private onSocketClose: Function;
 
-    private devices: WapJidProps[];
+    private devices: Wid[];
 
-    constructor({ sessionName, onSocketClose }: Props) {
+    constructor({ sessionName, onSocketClose, log }: Props) {
         super();
 
         if (sessions[sessionName]) {
@@ -96,9 +97,18 @@ export class WaClient extends EventEmitter {
         sessions[sessionName] = this;
         this.sessionName = sessionName;
         this.onSocketClose = onSocketClose;
+        this.enableLog = log ?? false;
         this.storageService = new StorageService('./sessions');
 
         this.initConfig();
+    }
+
+    public log(...data: any[]) {
+        if (!this.enableLog) {
+            return;
+        }
+
+        console.log(...data);
     }
 
     private initConfig() {
@@ -111,7 +121,17 @@ export class WaClient extends EventEmitter {
         this.socket = new Socket();
         this.socket.open();
         this.ephemeralKeyPair = generateIdentityKeyPair();
-        this.socket.onOpen = this.handleSocketOpen;
+
+        return new Promise((resolve, reject) => {
+            this.socket.onOpen = async () => {
+                try {
+                    await this.handleSocketOpen();
+                    resolve(true);
+                } catch (err) {
+                    reject(false);
+                }
+            };
+        });
     };
 
     private handleSocketOpen = async () => {
@@ -139,7 +159,7 @@ export class WaClient extends EventEmitter {
 
         const serverHelloEnc = await this.noise.sendAndReceive(WAProto.HandshakeMessage.encode(data).finish());
 
-        console.log('received server hello', toLowerCaseHex(serverHelloEnc));
+        this.log('received server hello', toLowerCaseHex(serverHelloEnc));
         const { serverHello } = WAProto.HandshakeMessage.decode(serverHelloEnc);
         if (!serverHello) {
             throw new Error('ServerHello payload error');
@@ -202,6 +222,7 @@ export class WaClient extends EventEmitter {
         this.socketConn.onClose = this.onNoiseSocketClose.bind(this);
         this.socketConn.setOnFrame(this.onNoiseNewFrame.bind(this));
     };
+    
 
     private onNoiseSocketClose = () => {
         this.destroyKeepAlive();
@@ -221,35 +242,17 @@ export class WaClient extends EventEmitter {
         });
     }
 
-    private unpackStanza = async (e): Promise<Binary> => {
-        let data = new Binary(e);
-        if (2 & data.readUint8()) {
-            return new Promise((res) => {
-                zlib.inflate(data.readByteArray(), (err, result) => {
-                    if (err) {
-                        console.error('err to decode stanza');
-                        return;
-                    }
-
-                    res(new Binary(result));
-                });
-            });
-        }
-
-        return data;
-    };
-
     public uploadPreKeys = async () => {
         const registrationId = this.storageService.get<number>('registrationId');
         const identityKey = this.storageService.get<KeyPair>('signedIdentityKey');
         const signedPreKey = this.storageService.get<SignedKeyPair>('signedPreKey');
         if (!identityKey || !signedPreKey) {
-            console.log('invalid identityKey or signedPreKey from uploadPreKeys');
+            this.log('invalid identityKey or signedPreKey from uploadPreKeys');
             return;
         }
         const preKeys = await this.waSignal.getOrGenPreKeys(30);
         if (preKeys.length == 0) {
-            console.log('No preKey is available');
+            this.log('No preKey is available');
             return;
         }
         const stanza = new WapNode(
@@ -310,6 +313,14 @@ export class WaClient extends EventEmitter {
         );
     }
 
+    public getDevices() {
+        return this.devices;
+    }
+
+    public setDevices(devices: Wid[]) {
+        this.devices = devices;
+    }
+
     public getNoiseKey() {
         return this.noiseKey;
     }
@@ -334,318 +345,7 @@ export class WaClient extends EventEmitter {
         return this.advSecretKey;
     }
 
-    private parseStreamError = async (node: WapNode) => {
-        const code = node.attrs.code ?? null;
-        if (!code) {
-            console.log('invalid code in stream:error');
-            return;
-        }
-        if (code == '515') {
-            console.log('restarting socket');
-            this.socketConn.restart();
-        }
-        if (code == '516') {
-            // start logout
-        }
-    };
-
-    private parseStreamFailure = async (node: WapNode) => {
-        const reason = node.attrs.reason ?? null;
-        if (reason == '401') {
-            // disconnected by cell phone
-            console.log('restarting socket');
-            this.storageService.clearAll();
-            this.socketConn.restart();
-        }
-    };
-
-    private parseSuccess = async (node: WapNode) => {
-        console.log('success');
-        const serverHasPreKeys = await this.waSignal.getServerHasPreKeys();
-        if (!serverHasPreKeys) {
-            await this.uploadPreKeys();
-        }
-
-        await this.sendPassiveIq(false);
-    };
-
-    private parseMessage = async (node: WapNode) => {
-        const encMap: any[] = node.mapChildrenWithTag('enc', (node: WapNode) => {
-            return {
-                e2eType: node.attrs.type,
-                mediaType: node.attrs?.mediatype ?? null,
-                ciphertext: node.contentBytes(),
-                retryCount: node.attrs?.count ?? 0,
-            };
-        });
-
-        const deviceIdentity = node.maybeChild('device-identity');
-        const deviceIdentityBytes = deviceIdentity ? deviceIdentity.contentBytes() : null;
-
-        const msgInfo = ((node: WapNode, encMap: any[]) => {
-            let ephSettings: {
-                [key: string]: string;
-            } = {};
-            let participants: WapJid[] = [];
-
-            let info: any = {
-                externalId: node.attrs.id,
-                ts: node.attrs.t,
-                edit: node.attrs?.edit ?? -1,
-                isHsm: !!node.attrs?.hsm,
-                count: node.attrs?.count ?? null,
-                pushname: node.attrs?.notify ?? null,
-                category: node.attrs?.category ?? null,
-                offline: node.attrs?.offline ?? null,
-            };
-
-            const from: WapJid = node.attrs.from;
-            const recipient: WapJid = node.attrs?.recipient ?? null;
-            const participant: WapJid = node.attrs?.participant ?? null;
-            const isDirect = encMap.every((enc) => enc.e2eType != 'skmsg');
-            const isRetry = encMap.some((enc) => enc.retryCount > 0);
-
-            console.log({
-                from,
-                recipient,
-                participants,
-                isDirect,
-                isRetry,
-            });
-
-            const participantsNode = node.maybeChild('participants');
-            if (participantsNode) {
-                node.forEachChildWithTag('to', (node: WapNode) => {
-                    const jid: WapJid = node.attrs?.jid;
-                    const ephSetting = node.attrs?.eph_setting ?? null;
-
-                    participants.push(node.attrs.jid);
-
-                    if (ephSetting) {
-                        ephSettings[jid.toString()] = ephSetting;
-                    }
-                });
-            }
-
-            const isPeer = (jid: WapJid) => {
-                const me = this.storageService.get<WapJid>('me');
-                console.log('me', me);
-                return jid.equals(me);
-            };
-
-            if (from.isUser()) {
-                if (recipient) {
-                    if (!isPeer(from)) {
-                        throw new Error('recipient on non peer chat message');
-                    }
-
-                    return {
-                        ...info,
-                        type: MESSAGE_TYPE.CHAT,
-                        chat: recipient,
-                        author: from,
-                    };
-                }
-
-                return {
-                    type: MESSAGE_TYPE.CHAT,
-                    chat: from,
-                    author: from,
-                };
-            }
-
-            if (from.isGroup()) {
-                if (!participant) {
-                    throw new Error('group message with no participant');
-                }
-
-                return {
-                    ...info,
-                    type: MESSAGE_TYPE.GROUP,
-                    chat: from,
-                    author: participant,
-                    isDirect,
-                };
-            }
-
-            if (from.isBroadcast() && !from.isStatusV3()) {
-                if (!participant) {
-                    throw new Error('broadcast message with no participant');
-                }
-
-                if (isPeer(participant)) {
-                    if (participants.length == 0) {
-                        if (!isRetry) {
-                            throw new Error('peer broadcast message with no participants node');
-                        }
-
-                        participants = [];
-                    }
-
-                    return {
-                        ...info,
-                        type: MESSAGE_TYPE.PEER_BROADCAST,
-                        chat: from,
-                        author: participant,
-                        isDirect,
-                        bclParticipants: participants,
-                        bclHashValidated: false,
-                        bclEphSettings: ephSettings,
-                    };
-                }
-
-                return {
-                    ...info,
-                    type: MESSAGE_TYPE.OTHER_BROADCAST,
-                    chat: from,
-                    author: participant,
-                    isDirect,
-                    ephSetting: node.attrs?.eph_setting ?? null,
-                };
-            }
-
-            if (from.isBroadcast() && from.isStatusV3()) {
-                if (!participant) {
-                    throw new Error('status message with no participant');
-                }
-
-                if (isPeer(participant) && isDirect) {
-                    if (participants.length == 0) {
-                        return {
-                            ...info,
-                            type: MESSAGE_TYPE.DIRECT_PEER_STATUS,
-                            chat: from,
-                            author: participant,
-                            isDirect,
-                        };
-                    }
-
-                    return {
-                        ...info,
-                        type: MESSAGE_TYPE.DIRECT_PEER_STATUS,
-                        chat: from,
-                        author: participant,
-                        bclParticipants: participants,
-                        bclHashValidated: false,
-                    };
-                }
-
-                return {
-                    ...info,
-                    type: MESSAGE_TYPE.OTHER_STATUS,
-                    chat: from,
-                    author: participant,
-                    isDirect,
-                };
-            }
-
-            throw new Error('Unrecognized message type');
-        })(node, encMap);
-
-        const msgMeta = ((node: WapNode, encMap: any[]) => {
-            const isUnavailable = node.hasChild('unavailable');
-            if (!isUnavailable && encMap.length == 0) {
-                throw new Error('incomingMsgParser: to have enc node children');
-            }
-
-            return {
-                isUnavailable,
-                type: node.attrs.type,
-                rawTs: node.attrs.t,
-                urlNumber: node.hasChild('url_number'),
-                urlText: node.hasChild('url_text'),
-            };
-        })(node, encMap);
-
-        const bizInfo = ((node: WapNode) => {
-            const verifiedNameCert = node.hasChild('verified_name') ? node.child('verified_name').contentBytes() : null;
-            const verifiedLevel = node.attrs?.verified_level ?? null;
-            const verifiedNameSerial = node.attrs?.verified_name ?? -1;
-            const biz = node.maybeChild('biz');
-            let privacyMode = null;
-
-            if (biz != null) {
-                const actualActors = biz.attrs?.actual_actors ?? null;
-                const hostStorage = biz.attrs?.host_storage ?? null;
-                const privacyModeTs = biz.attrs?.privacy_mode_ts ?? null;
-
-                if (actualActors && hostStorage && privacyModeTs) {
-                    privacyMode = {
-                        actualActors,
-                        hostStorage,
-                        privacyModeTs,
-                    };
-                }
-            }
-
-            return {
-                verifiedNameCert,
-                verifiedLevel: verifiedLevel,
-                verifiedNameSerial,
-                privacyMode,
-            };
-        })(node);
-
-        const paymentInfo = null; // TODO PAYMENT INFO
-
-        /*console.log({
-            encs: encMap,
-            msgInfo,
-            msgMeta,
-            bizInfo,
-            paymentInfo,
-            deviceIdentity: deviceIdentityBytes,
-        });*/
-
-        const getFrom = (msg: any) => (msg.type == MESSAGE_TYPE.CHAT ? msg.author : msg.chat);
-
-        for (const enc of encMap) {
-            switch (enc.e2eType) {
-                case 'skmsg':
-                    try {
-                        console.log('skmsg');
-                        const result = await this.waSignal.decryptGroupSignalProto(getFrom(msgInfo), msgInfo.author, Buffer.from(enc.ciphertext));
-
-                        const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
-
-                        console.log('decryptGroupMessage', {
-                            ...msgInfo,
-                            ...messageProto,
-                        });
-                    } catch (e) {
-                        this.sendRetryReceipt(node);
-                    }
-                    break;
-                case 'pkmsg':
-                case 'msg':
-                    try {
-                        const s = getFrom(msgInfo);
-                        const n = s.isUser() ? s : msgInfo.author;
-
-                        const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
-
-                        const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
-
-                        if (messageProto.senderKeyDistributionMessage) {
-                            await this.waSignal.processSenderKeyDistributionMessage(msgInfo.chat, msgInfo.author, messageProto.senderKeyDistributionMessage);
-                        }
-
-                        console.log('decryptMessage', {
-                            ...msgInfo,
-                            ...messageProto,
-                        });
-                    } catch (e) {
-                        this.sendRetryReceipt(node);
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-        }
-    };
-
-    private async sendRetryReceipt(node: WapNode) {
+    public async sendRetryReceipt(node: WapNode) {
         const isGroup = !!node.attrs.participant;
         const registrationInfo = {
             registrationId: await this.storageSignal.getOurRegistrationId(),
@@ -693,14 +393,14 @@ export class WaClient extends EventEmitter {
                     : []),
             ],
         );
-        this.sendMessageAndWait(receipt);
+        await this.sendMessageAndWait(receipt);
     }
 
     private handleDevices = (node: WapNode) => {
         this.devices = [];
         node.content.forEach((content: WapNode) => {
             if (content.tag == 'device' && content.attrs && content.attrs.jid) {
-                this.devices.push(new WapJidProps(content.attrs.jid.toString()));
+                this.devices.push(new Wid(content.attrs.jid.toString()));
             }
         });
     };
@@ -722,37 +422,16 @@ export class WaClient extends EventEmitter {
         }
 
         const tag = stanza.tag;
-        console.log('received tag node', tag);
+        this.log('received tag node', tag);
 
         if (stanza.attrs && stanza.attrs.id && this.socketWaitIqs[stanza.attrs.id]) {
             this.socketWaitIqs[stanza.attrs.id].resolve(stanza);
             delete this.socketWaitIqs[stanza.attrs.id];
         }
 
-        await this.eventHandler.handle(stanza);
-
-        if (tag == 'stream:error') {
-            await this.parseStreamError(stanza);
-        }
-
-        if (tag == 'success') {
-            await this.parseSuccess(stanza);
-        }
-
-        if (tag == 'failure') {
-            await this.parseStreamFailure(stanza);
-        }
-
-        if (tag == 'message') {
-            try {
-                await this.parseMessage(stanza);
-            } catch (_) {
-                console.log('Erro ao fazer o parse da mensagem');
-            }
-        }
-
         if (tag == 'notification') {
             await this.parseNotification(stanza);
+            return;
         }
 
         if (tag == 'ack') {
@@ -768,6 +447,7 @@ export class WaClient extends EventEmitter {
                     null,
                 );
                 this.socketConn.sendFrame(encodeStanza(receipt));
+                return;
             }
         }
 
@@ -797,18 +477,21 @@ export class WaClient extends EventEmitter {
                 );
 
                 this.socketConn.sendFrame(encodeStanza(receipt));
+                return;
             }
         }
+
+        await this.eventHandler.handle(stanza);
     };
 
     private onNoiseNewFrame = async (frame) => {
-        const data = await this.unpackStanza(frame);
+        const data = await unpackStanza(frame);
         const stanza = decodeStanza(data);
         await this.handleStanza(stanza);
-        console.log(stanza);
+        this.log(stanza);
     };
 
-    private async ensureIdentityUser(user: WapJid, forceNewSession = false) {
+    public async ensureIdentityUser(user: WapJid, forceNewSession = false) {
         const sessionStorage = await this.waSignal.hasSession(user);
         if (!forceNewSession && sessionStorage) {
             return;
@@ -858,11 +541,9 @@ export class WaClient extends EventEmitter {
         await this.waSignal.createSignalSession(user, device);
     }
 
-    private async sendMessageGroup() {
-        const phone = 'ID DO GRUPO';
-        const message: WAProto.IMessage = {
-            conversation: `uma mensagem de grupo`,
-        };
+    public async sendMessageGroup(jid: string | WapJid, message: WAProto.IMessage) {
+        const phone = typeof jid == 'string' ? jid : jid.getUser();
+
         const encodedMessage = new Binary(WAProto.Message.encode(message).finish());
         writeRandomPadMax16(encodedMessage);
         const encoded = encodedMessage.readByteArray();
@@ -894,7 +575,7 @@ export class WaClient extends EventEmitter {
                 'message',
                 {
                     to: destination,
-                    id: this.generateMessageID(),
+                    id: generateMessageID(),
                     phash: await phashV2(groupData.participants),
                     type: 'text',
                 },
@@ -915,41 +596,20 @@ export class WaClient extends EventEmitter {
         } catch (e) {}
     }
 
-    private sendMessage = async (jid: WapJid, message_: WAProto.IMessage, count) => {
+    public async sendMessage(jid: string | WapJid, message: WAProto.IMessage) {
+        if (typeof jid == 'string' && isGroupID(jid) || jid instanceof WapJid && jid.isGroup()) {
+            return this.sendMessageGroup(jid, message);
+        }
+
         // return
         // if (!this.devices || this.devices.length == 0) {
-        //     return console.log('Precisa sincronizar os devices')
+        //     return this.log('Precisa sincronizar os devices')
         // }
 
         const account = await this.storageService.get('account');
-        const destinationPhone = 'NUMBER';
-        const destinationJid = new WapJidProps(`${destinationPhone}@c.us`);
-        const message: WAProto.IMessage = {
-            conversation: `ola mundo ${count}`,
-            /*buttonsMessage: {
-                headerType: 1,
-                contentText: 'oi',
-                footerText: 'oi 2',
-                buttons: [
-                    {
-                        buttonId: '1',
-                        buttonText: {
-                            displayText: 'Sim',
-                        },
-                        type: 1,
-                    },
-                    {
-                        buttonId: '2',
-                        buttonText: {
-                            displayText: 'Não',
-                        },
-                        type: 1,
-                    },
-                ],
-            },*/
-        };
-
-        // const message: WAProto.IMessage = { conversation: `Enviando mensagem pela ${count} vez`  };
+        const destinationPhone = typeof jid == 'string' ? jid : jid.getUser();
+        const destinationJid = new Wid(`${destinationPhone}@c.us`);
+      
         const deviceSentMessage = {
             deviceSentMessage: {
                 destinationJid: destinationJid.toString({
@@ -972,26 +632,26 @@ export class WaClient extends EventEmitter {
 
             const isMe = device.getUser() == this.me.getUser();
 
-            const participant = await this.createWapNodeParticipant(
-                isMe ? deviceSentMessage : message,
-                WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()),
-            );
+            const participant = await this.createWapNodeParticipant(isMe ? deviceSentMessage : message, WapJid.createAD(device.getUser(), device.getAgent(), device.getDevice()));
             if (participant) {
                 participants.push(participant);
             }
         }
+
+        console.dir(participants, { depth: null })
 
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
 
         const stanza = new WapNode(
             'message',
             {
-                id: this.generateMessageID(),
+                id: generateMessageID(),
                 type: 'text',
                 to: WapJid.create(destinationPhone, 's.whatsapp.net'),
             },
             [new WapNode('participants', {}, participants), new WapNode('device-identity', {}, deviceIdentity)],
         );
+
 
         const frame = encodeStanza(stanza);
         this.socketConn.sendFrame(frame);
@@ -1020,6 +680,7 @@ export class WaClient extends EventEmitter {
                 ],
             );
         } catch (e) {
+            console.log('err', e);
             if (e && e.name == 'SessionError') {
                 await this.ensureIdentityUser(jidAd, true);
                 return this.createWapNodeParticipant(body, jidAd);
@@ -1027,17 +688,6 @@ export class WaClient extends EventEmitter {
             return null;
         }
     };
-
-    generateMessageID() {
-        var r = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];
-        var e = new Uint8Array(8);
-        crypto.getRandomValues(e);
-        for (var t = new Array(16), a = 0, i = 0; a < e.length; a++, i += 2) {
-            var n = e[a];
-            (t[i] = r[n >> 4]), (t[i + 1] = r[15 & n]);
-        }
-        return '3EB0' + String.fromCharCode.apply(String, t);
-    }
 
     protected getUSyncDevices = async (jids: WapJid[], ignoreZeroDevice = true): Promise<any> => {
         const users = jids.map((jid) => {
@@ -1072,6 +722,7 @@ export class WaClient extends EventEmitter {
                 ),
             ],
         );
+
         const resultFrame: any = await this.sendMessageAndWait(iq);
         const devicesToReturn = [];
         for (let index = 0; index < resultFrame.content.length; index++) {
@@ -1102,6 +753,7 @@ export class WaClient extends EventEmitter {
                 }
             }
         }
+
         return devicesToReturn;
     };
 
@@ -1116,6 +768,7 @@ export class WaClient extends EventEmitter {
             },
             [new WapNode('query', { request: 'interactive' })],
         );
+
         const result = await this.sendMessageAndWait(stanza);
         const group: WapNode = result.content[0];
         const data = {
@@ -1133,19 +786,8 @@ export class WaClient extends EventEmitter {
     }
 
     private createKeepAlive = () => {
-        let count = 0;
-        /*setInterval(() => {
-            try {
-                console.log(`Enviando mensagem`);
-                count++;
-                this.sendMessage(null, null, count);
-            } catch (_) {
-                console.log('tretou enviar mensagem');
-            }
-        }, 5000);*/
-
         this.keepAliveTimer = setInterval(() => {
-            console.log('send ping to server');
+            this.log('send ping to server');
             this.socketConn.sendFrame(
                 encodeStanza(
                     new WapNode(

@@ -52,8 +52,6 @@ export class StorageService {
 
         const data = await callback();
 
-        console.log('before save', data);
-
         this.storage[key] = data;
 
         this.writeStorage();
