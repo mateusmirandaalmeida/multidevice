@@ -1,5 +1,4 @@
 import { WaClient } from './client';
-import { proto as WAProto } from './proto/WAMessage';
 
 (async () => {
     /** first client */
@@ -25,33 +24,36 @@ import { proto as WAProto } from './proto/WAMessage';
             await session.sendMessage(message.chat, {
                 conversation: 'pong',
             });
+
+            return;
+        }
+
+        if (msg == '!buttons') {
+            await session.sendMessage(message.chat, {
+                buttonsMessage: {
+                    headerType: 1,
+                    contentText: 'Hello',
+                    footerText: 'Hi',
+                    buttons: [
+                        {
+                            buttonId: '1',
+                            buttonText: {
+                                displayText: 'Yes',
+                            },
+                            type: 1,
+                        },
+                        {
+                            buttonId: '2',
+                            buttonText: {
+                                displayText: 'No',
+                            },
+                            type: 1,
+                        },
+                    ],
+                },
+            });
         }
     });
-
-    const message: WAProto.IMessage = {
-        conversation: `ola mundo`,
-        /*buttonsMessage: {
-            headerType: 1,
-            contentText: 'oi',
-            footerText: 'oi 2',
-            buttons: [
-                {
-                    buttonId: '1',
-                    buttonText: {
-                        displayText: 'Sim',
-                    },
-                    type: 1,
-                },
-                {
-                    buttonId: '2',
-                    buttonText: {
-                        displayText: 'Não',
-                    },
-                    type: 1,
-                },
-            ],
-        },*/
-    };
 
     /** second client */
     // const session2 = new WaClient({

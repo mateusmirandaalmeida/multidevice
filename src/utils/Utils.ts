@@ -63,6 +63,10 @@ export const MESSAGE_TYPE = {
 };
 
 export const OFFICIAL_BIZ_WID = '16505361212@c.us';
+export const DEVICE = { PRIMARY_DEVICE: 0, PRIMARY_VERSION: 0 };
+export const SERVER_WID = 'server@c.us';
+export const PSA_WID = '0@c.us';
+export const STATUS_WID = 'status@broadcast';
 
 export const xmppSignedPreKey = (key: SignedKeyPair) => {
   return new WapNode('skey', null, [

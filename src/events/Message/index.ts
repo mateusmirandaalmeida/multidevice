@@ -19,12 +19,10 @@ export class MessageHandler extends Handler {
 
                         const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
 
-                        if (!msgInfo.offline) {
-                            this.client.emit('message', {
-                                ...msgInfo,
-                                ...messageProto,
-                            });
-                        }
+                        this.client.emit('message', {
+                            ...msgInfo,
+                            ...messageProto,
+                        });
                     } catch (e) {
                         await this.client.sendRetryReceipt(node);
                     }
@@ -36,9 +34,12 @@ export class MessageHandler extends Handler {
                     const n = s.isUser() ? s : msgInfo.author;
 
                     try {
-                        console.dir({
-                            ...msgInfo,
-                        }, { depth: null })
+                        console.dir(
+                            {
+                                ...msgInfo,
+                            },
+                            { depth: null },
+                        );
 
                         const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
 
@@ -47,14 +48,12 @@ export class MessageHandler extends Handler {
                         if (messageProto.senderKeyDistributionMessage) {
                             await this.waSignal.processSenderKeyDistributionMessage(msgInfo.chat, msgInfo.author, messageProto.senderKeyDistributionMessage);
                         }
-                
-                        if (!msgInfo.offline) {
-                            this.client.emit('message', {
-                                ...msgInfo,
-                                ...messageProto,
-                            });
-                        }
-                        this.client.afterMessageDecrypt(node)
+
+                        this.client.emit('message', {
+                            ...msgInfo,
+                            ...messageProto,
+                        });
+                        this.client.afterMessageDecrypt(node);
                     } catch (e) {
                         await this.client.sendRetryReceipt(node);
                     }
@@ -63,10 +62,10 @@ export class MessageHandler extends Handler {
                 default:
                     break;
             }
-        }
+        };
 
         for (const enc of encs) {
-           await decryptEnc(enc);
+            await decryptEnc(enc);
         }
 
         return true;

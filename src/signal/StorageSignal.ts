@@ -57,7 +57,7 @@ export class StorageSignal {
     }
 
     async removePreKey(keyId) {
-        console.log('remove pre key', keyId);
+        //console.log('remove pre key', keyId);
         return;
         
         const preKeys = this.storageService.get<PreKey[]>('preKeys');
@@ -78,7 +78,7 @@ export class StorageSignal {
     }
 
     async loadSession(identifier) {
-        console.log('loadSession', identifier);
+        //console.log('loadSession', identifier);
         if (!this.sessions[identifier]) {
             return null;
         }
@@ -95,7 +95,7 @@ export class StorageSignal {
     }
 
     async storeSession(identifier, record) {
-        console.log('storeSession', identifier);
+        //console.log('storeSession', identifier);
         this.sessions[identifier] = record;
     }
 

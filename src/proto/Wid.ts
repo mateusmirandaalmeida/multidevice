@@ -1,4 +1,4 @@
-import { WA_CONSTANTS } from "./WaConstants";
+import { OFFICIAL_BIZ_WID, SERVER_WID, STATUS_WID, DEVICE, PSA_WID } from "../utils/Utils";
 
 const isString = function (e) {
   return "string" == typeof e;
@@ -116,7 +116,7 @@ export class Wid {
   }
   isCompanion() {
     return (
-      null != this.device && this.device !== WA_CONSTANTS.DEVICE.PRIMARY_DEVICE
+      null != this.device && this.device !== DEVICE.PRIMARY_DEVICE
     );
   }
   isUser() {
@@ -126,7 +126,7 @@ export class Wid {
     return "broadcast" === this.server;
   }
   isOfficialBizAccount() {
-    return this.toString() === WA_CONSTANTS.OFFICIAL_BIZ_WID;
+    return this.toString() === OFFICIAL_BIZ_WID;
   }
   isGroup() {
     return "g.us" === this.server;
@@ -173,22 +173,22 @@ export class Wid {
   }
   static isServer(e) {
     return isString(e)
-      ? e.toLowerCase() === WA_CONSTANTS.SERVER_WID
+      ? e.toLowerCase() === SERVER_WID
       : e instanceof Wid && e.isServer();
   }
   static isPSA(e) {
     return isString(e)
-      ? e.toLowerCase() === WA_CONSTANTS.PSA_WID
+      ? e.toLowerCase() === PSA_WID
       : e instanceof Wid && e.isPSA();
   }
   static isStatusV3(e) {
     return isString(e)
-      ? e.toLowerCase() === WA_CONSTANTS.STATUS_WID
+      ? e.toLowerCase() === STATUS_WID
       : e instanceof Wid && e.isStatusV3();
   }
   static isOfficialBizAccount(e) {
     return isString(e)
-      ? e.toLowerCase() === WA_CONSTANTS.OFFICIAL_BIZ_WID
+      ? e.toLowerCase() === OFFICIAL_BIZ_WID
       : e instanceof Wid && e.isOfficialBizAccount();
   }
   static user(e) {

@@ -36,8 +36,7 @@ import { WaSignal } from './signal/Signal';
 import { Wid } from './proto/Wid';
 
 import * as Crypto from 'crypto';
-import { e2eSessionParser, retryRequestParser } from './proto/retry-parser';
-import { deviceParser } from './proto/ProtoParsers';
+import { deviceParser, e2eSessionParser } from './proto/ProtoParsers';
 
 import { EventEmitter } from 'stream';
 import { EventHandlerService } from './services/EventHandlerService';
@@ -474,26 +473,6 @@ export class WaClient extends EventEmitter {
         await this.sendMessageAndWait(receipt);
     }
 
-    private handleDevices = (node: WapNode) => {
-        this.devices = [];
-        node.content.forEach((content: WapNode) => {
-            if (content.tag == 'device' && content.attrs && content.attrs.jid) {
-                this.devices.push(new Wid(content.attrs.jid.toString()));
-            }
-        });
-    };
-
-    private parseNotification = (stanza: WapNode) => {
-        stanza.content &&
-            stanza.content.forEach((node: WapNode) => {
-                switch (node.tag) {
-                    case 'devices':
-                        this.handleDevices(node);
-                        break;
-                }
-            });
-    };
-
     private handleStanza = async (stanza: WapNode) => {
         if (!(stanza instanceof WapNode)) {
             return null;
@@ -505,58 +484,6 @@ export class WaClient extends EventEmitter {
         if (stanza.attrs && stanza.attrs.id && this.socketWaitIqs[stanza.attrs.id]) {
             this.socketWaitIqs[stanza.attrs.id].resolve(stanza);
             delete this.socketWaitIqs[stanza.attrs.id];
-        }
-
-        if (tag == 'notification') {
-            await this.parseNotification(stanza);
-            return;
-        }
-
-        if (tag == 'ack') {
-            // await this.parseNotification(stanza);
-            if (stanza.attrs.class == 'message') {
-                const receipt = new WapNode(
-                    'ack',
-                    {
-                        class: 'receipt',
-                        id: stanza.attrs.id,
-                        to: stanza.attrs.from,
-                    },
-                    null,
-                );
-                this.socketConn.sendFrame(encodeStanza(receipt));
-                return;
-            }
-        }
-
-        if (tag == 'receipt') {
-            if (stanza.attrs.type == 'retry') {
-                const t = retryRequestParser(stanza);
-
-                const JID = function (e) {
-                    return (null != e.device && 0 !== e.device) || (null != e.agent && 0 !== e.agent) ? WapJid.createAD(e.user, e.agent, e.device) : WapJid.create(e.user, e.server);
-                };
-
-                const DEVICE_JID = function (e) {
-                    return WapJid.createAD(e.user, e.agent, e.device);
-                };
-
-                var { from: a, participant: s, recipient: o, retryCount: l, stanzaId: d } = t;
-                const receipt = new WapNode(
-                    'ack',
-                    {
-                        id: d,
-                        to: JID(a),
-                        // participant: s ? DEVICE_JID(s) : { sentinel: 'DROP_ATTR' },
-                        class: 'receipt',
-                        type: 'retry',
-                    },
-                    null,
-                );
-
-                this.socketConn.sendFrame(encodeStanza(receipt));
-                return;
-            }
         }
 
         await this.eventHandler.handle(stanza);
