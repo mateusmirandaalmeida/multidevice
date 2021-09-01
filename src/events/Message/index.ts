@@ -34,13 +34,6 @@ export class MessageHandler extends Handler {
                     const n = s.isUser() ? s : msgInfo.author;
 
                     try {
-                        console.dir(
-                            {
-                                ...msgInfo,
-                            },
-                            { depth: null },
-                        );
-
                         const result = await this.waSignal.decryptSignalProto(n, enc.e2eType, Buffer.from(enc.ciphertext));
 
                         const messageProto = WAProto.Message.decode(unpadRandomMax16(result));
