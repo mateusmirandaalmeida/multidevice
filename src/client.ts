@@ -17,7 +17,7 @@ import {
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
-import { toLowerCaseHex } from './utils/HexHelper';
+import { toLowerCaseHex, randomHex } from './utils/HexHelper';
 
 import { generatePayloadRegister } from './payloads/RegisterPayload';
 import { Binary } from './proto/Binary';
@@ -25,7 +25,7 @@ import { encodeStanza, generateId, decodeStanza, unpackStanza } from './proto/St
 import { generateIdentityKeyPair, generateRegistrationId, generateSignedPreKey, KeyPair, sharedKey, SignedKeyPair } from './utils/Curve';
 import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
-import { S_WHATSAPP_NET, WapJid } from './proto/WapJid';
+import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
 import { proto as WAProto } from './proto/WAMessage';
 
@@ -353,30 +353,25 @@ export class WaClient extends EventEmitter {
 
     public async afterMessageDecrypt(node: WapNode) {
         const isGroup = !!node.attrs.participant;
-        const isMe = isGroup
-      ? node.attrs.participant.getUser() == this.me.getUser()
-      : node.attrs.from.getUser() == this.me.getUser();
-        this.sendMessageAck(node)
+        const isMe = isGroup ? node.attrs.participant.getUser() == this.me.getUser() : node.attrs.from.getUser() == this.me.getUser();
+        this.sendMessageAck(node);
         isMe ? this.sendMessageSender(node) : this.sendMessageInactive(node);
     }
 
     public async sendMessageSender(node: WapNode) {
         const isGroup = !!node.attrs.participant;
         const stanza = new WapNode(
-          'receipt',
-          {
-            type: 'sender',
-            id: node.attrs.id,
-            ...(isGroup
-              ? { participant: node.attrs.participant }
-              : { recipient: node.attrs.recipient }),
-            to: node.attrs.from,
-          },
-          null,
+            'receipt',
+            {
+                type: 'sender',
+                id: node.attrs.id,
+                ...(isGroup ? { participant: node.attrs.participant } : { recipient: node.attrs.recipient }),
+                to: node.attrs.from,
+            },
+            null,
         );
         this.onlySendFrame(stanza);
-      }
-    
+    }
 
     public async sendMessageInactive(node: WapNode) {
         const isGroup = !!node.attrs.participant;
@@ -759,6 +754,38 @@ export class WaClient extends EventEmitter {
 
         return devicesToReturn;
     };
+
+    public async createGroup(name: string, participants: string[]) {
+        const participantsNode = participants.map((participant) => {
+            return new WapNode('participant', {
+                jid: WapJid.create(participant.replace('@c.us', '').replace('@s.whatsapp.net', ''), 's.whatsapp.net'),
+            });
+        });
+
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                type: 'set',
+                xmlns: 'w:g2',
+                to: G_US,
+            },
+            [
+                new WapNode(
+                    'create',
+                    {
+                        subject: name,
+                        key: randomHex(8),
+                    },
+                    participantsNode,
+                ),
+            ],
+        );
+
+        const result = await this.sendMessageAndWait(stanza);
+
+        return result;
+    }
 
     public async getGroupInfo(groupPhone: string) {
         const stanza = new WapNode(

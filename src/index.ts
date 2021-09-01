@@ -18,17 +18,57 @@ import { WaClient } from './client';
 
     session.on('message', async (message: any) => {
         console.log('message received', message);
-        const msg = message.deviceSentMessage ? message.deviceSentMessage.message.conversation : message.conversation;
+        const conversation = message.deviceSentMessage ? message.deviceSentMessage.message.conversation : message.conversation;
 
-        if (msg == '!ping') {
+        if (!conversation) {
+            return;
+        }
+
+        if (conversation == '!ping') {
             await session.sendMessage(message.chat, {
                 conversation: 'pong',
             });
 
             return;
         }
+        
+        if (conversation.startsWith('!creategroup')) {
+            if (message.chat.isGroup()) {
+                await session.sendMessage(message.chat, {
+                    conversation: 'Command in group not allowned',
+                });
 
-        if (msg == '!buttons') {
+                return;
+            }
+
+            const params = conversation.split(' ');
+
+            const name = params[1] ?? null;
+            if (!name) {
+                await session.sendMessage(message.chat, {
+                    conversation: 'Invalid group name',
+                });
+
+                return;
+            }
+
+            await session.sendMessage(message.chat, {
+                conversation: `Creating group *${name}* with: ${message.chat.toString()}`,
+            });
+
+            const result = await session.createGroup(name, [message.chat.toString()]);
+
+            console.log('created group', result.content);
+
+            const id = result.content[0].attrs.id;
+            await session.sendMessage(message.chat, {
+                conversation: `Group created with id: *${id}*`,
+            });
+
+            return;
+        }
+
+        if (conversation == '!buttons') {
             await session.sendMessage(message.chat, {
                 buttonsMessage: {
                     headerType: 1,
