@@ -1,6 +1,6 @@
 import { PromiseQueue } from './../utils/PromiseQueue';
-import * as Crypto from 'crypto';
 import { FrameSocket } from './FrameSocket';
+import * as Crypto from 'crypto';
 
 const crypto = Crypto.webcrypto as any;
 

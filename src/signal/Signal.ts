@@ -4,12 +4,12 @@ import libsignal from 'libsignal';
 import { WapJid } from './../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
-
+import ByteBuffer from 'bytebuffer';
+import { proto as WAProto } from '../proto/WAMessage';
 interface IIdentity {
     identifier: ProtocolAddress;
     identifierKey: Key;
 }
-
 export class WaSignal {
     constructor(public storageService: StorageService, public storageSignal: StorageSignal) {}
 
@@ -17,7 +17,6 @@ export class WaSignal {
         const newPub = new Uint8Array(33);
         newPub.set([5], 0);
         newPub.set(pubKey, 1);
-
         return newPub;
     };
 
@@ -80,6 +79,13 @@ export class WaSignal {
         return true;
     };
 
+    getOrGenSinglePreKey() {
+        return this.getOrGenPreKeys(1).then((e) => {
+            if (1 !== e.length) throw Error('Expected to get exactly one key but got ${keys.length}');
+            return e[0];
+        });
+    }
+
     getOrGenPreKeys = async (range: number) => {
         const firstUnuploadedId = (await this.getMeta('firstUnuploadedId')) ?? 1;
         const nextPreKeyId = (await this.getMeta('nextPreKeyId')) ?? 1;
@@ -125,9 +131,60 @@ export class WaSignal {
     };
 
     createLibSignalAddress = (e: WapJid) => {
-        if (!(e.isUser() || e.isServer() || e.isPSA())) throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+        if (!(e.isUser() || e.isServer() || e.isPSA())) {
+            console.log('useeeer', e);
+            throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+        }
 
         return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
+    };
+
+    hasSession(user: WapJid) {
+        return this.storageSignal.hasSession(this.createLibSignalAddress(user));
+    }
+
+    async processSenderKeyDistributionMessage(group, author, senderKeyDistributionMessage: WAProto.ISenderKeyDistributionMessage) {
+        const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
+
+        const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
+
+        //console.log('processSenderKeyDistributionMessage::senderName', senderName);
+
+        const senderMsg = new libsignal.SenderKeyDistributionMessage(null, null, null, null, senderKeyDistributionMessage.axolotlSenderKeyDistributionMessage);
+
+        if (!(await this.storageSignal.loadSenderKey(senderName))) {
+            const record = new libsignal.SenderKeyRecord();
+            this.storageSignal.storeSenderKey(senderName, record);
+        }
+
+        await builder.process(senderName, senderMsg);
+    }
+
+    decryptGroupSignalProto = async (group, author, data) => {
+        try {
+            const senderName = new libsignal.SenderKeyName(group.toString(), this.createLibSignalAddress(author));
+            //console.log('decryptGroupSignalProto::senderName', senderName);
+            //console.log('decryptGroupSignalProto::session', await this.storageSignal.loadSenderKey(senderName));
+
+            const session = new libsignal.GroupCipher(this.storageSignal, senderName);
+
+            return session.decrypt(data);
+        } catch (err) {
+            console.log('err', err);
+
+            throw err;
+        }
+
+        /*var a = new window.libsignal.GroupCipher((0,
+        s.default)(),e.toString({
+            legacy: !0
+        }),(0,
+        l.createSignalAddress)(t));
+        return Promise.resolve(a).then((e=>e.decryptSenderKeyMessage(r))).catch((e=>e && "MessageCounterError" === e.name ? Promise.reject(new i.SignalMessageCounterError(e)) : Promise.reject(new i.SignalDecryptionError(e))))*/
+    };
+
+    removeSession = async (e) => {
+        await this.storageSignal.removeSession(this.createLibSignalAddress(e));
     };
 
     decryptSignalProto = async (e, t, r) => {
@@ -161,17 +218,50 @@ export class WaSignal {
 
     /** whatsapp web file qr: line 36027 */
     strToBuffer = function (e) {
-        // return new dcodeIO.ByteBuffer.wrap(e,"binary").toArrayBuffer()
+        return ByteBuffer.wrap(String.fromCharCode.apply(null, e), 'binary').toArrayBuffer();
     };
 
-    /** whatsapp web file qr: line 33750: yield d.Cipher.encryptSignalProto */
-    encryptSignalProto = (e, t) => {
-        // const session = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
-        // return Promise.resolve(session)
-        //     .then((e) => e.encrypt(t))
-        //     .then(({ type: e, body: t }) => ({
-        //         type: 3 === e ? 'pkmsg' : 'Msg',
-        //         ciphertext: this.strToBuffer(t),
-        //     }));
+    encryptSignalProto = async (e, t) => {
+        var r = new libsignal.SessionCipher(this.storageSignal, this.createLibSignalAddress(e));
+
+        return Promise.resolve(r)
+            .then((e) => {
+                return e.encrypt(Buffer.from(t));
+            })
+            .then(({ type: e, body: t }) => {
+                return {
+                    type: 3 === e ? 'pkmsg' : 'msg',
+                    ciphertext: this.strToBuffer(t),
+                };
+            });
     };
+
+    async encryptSenderKeyMsgSignalProto(group, author, t) {
+        try {
+            const senderName = new libsignal.SenderKeyName(
+                group.toString({
+                    legacy: !0,
+                }),
+                this.createLibSignalAddress(author),
+            );
+            const builder = new libsignal.GroupSessionBuilder(this.storageSignal);
+            if (!(await this.storageSignal.loadSenderKey(senderName))) {
+                const record = new libsignal.SenderKeyRecord();
+                await this.storageSignal.storeSenderKey(senderName, record);
+            }
+            const senderKeyDistributionMessage = await builder.create(senderName);
+            const session = new libsignal.GroupCipher(this.storageSignal, senderName);
+            return {
+                ciphertext: await session.encrypt(t),
+                senderKeyDistributionMessage,
+            };
+        } catch (e) {
+            throw e;
+        }
+    }
+
+    async createSignalSession(jid: WapJid, device: any) {
+        const session = new libsignal.SessionBuilder(this.storageSignal, this.createLibSignalAddress(jid));
+        await session.initOutgoing(device);
+    }
 }

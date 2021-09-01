@@ -30,7 +30,5 @@ export const generatePayloadLogin = (user: WapJid) => {
     device: user.getDevice(),
   };
 
-  console.log('login payload', payload);
-
   return WAProto.ClientPayload.encode(payload).finish();
 };

@@ -1,8 +1,10 @@
-import { KeyPair, PreKey } from '../utils/Curve';
+import { Key, KeyPair, PreKey } from '../utils/Curve';
 import { SignedKeyPair } from './../utils/Curve';
 import { StorageService } from '../services/StorageService';
 
 export class StorageSignal {
+    private senderKeys = {};
+    private sessions = {};
 
     constructor(public storageService: StorageService) {}
 
@@ -10,6 +12,10 @@ export class StorageSignal {
         SENDING: 1;
         RECEIVING: 2;
     };
+
+    getOurRegistrationId() {
+        return this.storageService.get<number>('registrationId');
+    }
 
     getOurIdentity() {
         const signedIdentityKey = this.storageService.get<KeyPair>('signedIdentityKey');
@@ -46,16 +52,19 @@ export class StorageSignal {
             privKey: Buffer.from(preKey.keyPair.privKey),
             pubKey: Buffer.from(preKey.keyPair.pubKey),
         };
-        
+
         return test;
     }
 
     async removePreKey(keyId) {
-        return true;
+        console.log('remove pre key', keyId);
+        return;
+        
         const preKeys = this.storageService.get<PreKey[]>('preKeys');
-
-        preKeys.splice(preKeys.findIndex((preKey) => preKey.keyId == keyId), 1);
-
+        const index = preKeys.findIndex((preKey) => preKey.keyId == keyId);
+        if (index != -1) {
+            preKeys.splice(index, 1);
+        }
         await this.storageService.save('preKeys', preKeys);
     }
 
@@ -69,43 +78,38 @@ export class StorageSignal {
     }
 
     async loadSession(identifier) {
-        return null;
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        });
-
-        if (!sessions[identifier]) {
+        console.log('loadSession', identifier);
+        if (!this.sessions[identifier]) {
             return null;
         }
 
-        return sessions[identifier];
+        return this.sessions[identifier];
+    }
+
+    async loadSenderKey(senderKey) {
+        return this.senderKeys[senderKey] ?? null;
+    }
+
+    async storeSenderKey(senderKey, record) {
+        return this.senderKeys[senderKey] = record;
     }
 
     async storeSession(identifier, record) {
-        return null;
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        });
-
-        sessions[identifier] = record;
-
-        await this.storageService.save('sessions', sessions);
+        console.log('storeSession', identifier);
+        this.sessions[identifier] = record;
     }
 
     async removeSession(identifier) {
-        const sessions = await this.storageService.getOrSave('sessions', () => {
-            return {};
-        });
-
-        if (sessions[identifier]) {
-            delete sessions[identifier];
+        if (this.sessions[identifier]) {
+            delete this.sessions[identifier];
         }
-
-        await this.storageService.save('sessions', sessions);
     }
 
-    async removeAllSessions(identifier) {
-        await this.storageService.save('sessions', {});
+    async removeAllSessions() {
+        this.sessions = {};
+    }
+
+    async hasSession(identifier) {
+        return !!this.sessions[identifier]
     }
 }
-
