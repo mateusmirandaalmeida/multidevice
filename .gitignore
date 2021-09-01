@@ -4,3 +4,5 @@ yarn-error.log
 storage.json
 codes
 .vscode
+package-lock.json
+yarn.lock
