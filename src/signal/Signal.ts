@@ -131,7 +131,10 @@ export class WaSignal {
     };
 
     createLibSignalAddress = (e: WapJid) => {
-        if (!(e.isUser() || e.isServer() || e.isPSA())) throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+        if (!(e.isUser() || e.isServer() || e.isPSA())) {
+            console.log('useeeer', e);
+            throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
+        }
 
         return new libsignal.ProtocolAddress(e.getSignalAddress(), 0);
     };
@@ -178,6 +181,10 @@ export class WaSignal {
         }),(0,
         l.createSignalAddress)(t));
         return Promise.resolve(a).then((e=>e.decryptSenderKeyMessage(r))).catch((e=>e && "MessageCounterError" === e.name ? Promise.reject(new i.SignalMessageCounterError(e)) : Promise.reject(new i.SignalDecryptionError(e))))*/
+    };
+
+    removeSession = async (e) => {
+        await this.storageSignal.removeSession(this.createLibSignalAddress(e));
     };
 
     decryptSignalProto = async (e, t, r) => {

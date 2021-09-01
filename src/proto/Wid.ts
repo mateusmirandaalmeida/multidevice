@@ -1,6 +1,5 @@
 import { WA_CONSTANTS } from "./WaConstants";
 
-
 const isString = function (e) {
   return "string" == typeof e;
 };
@@ -9,7 +8,7 @@ const s =
   /(?:^([^.:@]+))(?:\.([0-9]{1,2}))?(?:\:([0-9]{1,2}))?@(s\.whatsapp\.net|c\.us|g\.us|broadcast|call|b\.whatsapp\.net)$/i;
 const o = ["name", "short", "notify"];
 
-export class WapJidProps {
+export class Wid {
   public _serialized;
   public type;
   public user;
@@ -107,13 +106,13 @@ export class WapJidProps {
     return null == e ? 0 : e;
   }
   equals(e) {
-    return e instanceof WapJidProps && this.toString() === e.toString();
+    return e instanceof Wid && this.toString() === e.toString();
   }
   isLessThan(e) {
-    return e instanceof WapJidProps && this.toString() < e.toString();
+    return e instanceof Wid && this.toString() < e.toString();
   }
   isGreaterThan(e) {
-    return e instanceof WapJidProps && this.toString() > e.toString();
+    return e instanceof Wid && this.toString() > e.toString();
   }
   isCompanion() {
     return (
@@ -150,24 +149,24 @@ export class WapJidProps {
   static isXWid(e, t) {
     return isString(t)
       ? t.split("@")[1] === e
-      : t instanceof WapJidProps
+      : t instanceof Wid
       ? t.server === e
       : void 0 !== t && !1;
   }
   static isUser(e) {
-    return WapJidProps.isXWid("c.us", e);
+    return Wid.isXWid("c.us", e);
   }
   static isBroadcast(e) {
-    return WapJidProps.isXWid("broadcast", e);
+    return Wid.isXWid("broadcast", e);
   }
   static isGroup(e) {
-    return WapJidProps.isXWid("g.us", e);
+    return Wid.isXWid("g.us", e);
   }
   static isGroupCall(e) {
-    return WapJidProps.isXWid("call", e);
+    return Wid.isXWid("call", e);
   }
   static isWid(e) { 
-    return isString(e) ? s.test(e) : e instanceof WapJidProps;
+    return isString(e) ? s.test(e) : e instanceof Wid;
   }
   static canBeWid(e) {
     return !e || !o.includes(e);
@@ -175,35 +174,35 @@ export class WapJidProps {
   static isServer(e) {
     return isString(e)
       ? e.toLowerCase() === WA_CONSTANTS.SERVER_WID
-      : e instanceof WapJidProps && e.isServer();
+      : e instanceof Wid && e.isServer();
   }
   static isPSA(e) {
     return isString(e)
       ? e.toLowerCase() === WA_CONSTANTS.PSA_WID
-      : e instanceof WapJidProps && e.isPSA();
+      : e instanceof Wid && e.isPSA();
   }
   static isStatusV3(e) {
     return isString(e)
       ? e.toLowerCase() === WA_CONSTANTS.STATUS_WID
-      : e instanceof WapJidProps && e.isStatusV3();
+      : e instanceof Wid && e.isStatusV3();
   }
   static isOfficialBizAccount(e) {
     return isString(e)
       ? e.toLowerCase() === WA_CONSTANTS.OFFICIAL_BIZ_WID
-      : e instanceof WapJidProps && e.isOfficialBizAccount();
+      : e instanceof Wid && e.isOfficialBizAccount();
   }
   static user(e) {
-    return isString(e) ? e.split("@")[0] : e instanceof WapJidProps ? e.user : void 0;
+    return isString(e) ? e.split("@")[0] : e instanceof Wid ? e.user : void 0;
   }
   static equals(e, t) {
-    return e instanceof WapJidProps || t instanceof WapJidProps
-      ? e instanceof WapJidProps && e.equals(t)
+    return e instanceof Wid || t instanceof Wid
+      ? e instanceof Wid && e.equals(t)
       : e === t;
   }
   static isLessThan(e, t) {
-    return e instanceof WapJidProps && t instanceof WapJidProps && e.toString() < t.toString();
+    return e instanceof Wid && t instanceof Wid && e.toString() < t.toString();
   }
   static isGreaterThan(e, t) {
-    return e instanceof WapJidProps && t instanceof WapJidProps && e.toString() > t.toString();
+    return e instanceof Wid && t instanceof Wid && e.toString() > t.toString();
   }
 }

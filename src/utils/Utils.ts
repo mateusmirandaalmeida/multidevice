@@ -222,3 +222,26 @@ export const generateDeviceSignature = (account: any, identityKeyPair: any) => {
   const msg = Binary.build(new Uint8Array([6, 1]), account.details, identityKeyPair.pubKey, account.accountSignatureKey).readByteArray().buffer;
   return calculateSignature(identityKeyPair.privKey, new Uint8Array(msg));
 };
+
+export const JID = function (e) {
+  return (null != e.device && 0 !== e.device) || (null != e.agent && 0 !== e.agent) ? WapJid.createAD(e.user, e.agent, e.device) : WapJid.create(e.user, e.server);
+};
+
+export const DEVICE_JID = function (e) {
+  return WapJid.createAD(e.user, e.agent, e.device);
+};
+
+export const generateMessageID = () => {
+  var r = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];
+  var e = new Uint8Array(8);
+  crypto.getRandomValues(e);
+
+  for (var t = new Array(16), a = 0, i = 0; a < e.length; a++, i += 2) {
+      var n = e[a];
+      (t[i] = r[n >> 4]), (t[i + 1] = r[15 & n]);
+  }
+
+  return '3EB0' + String.fromCharCode.apply(String, t);
+}
+
+export const isGroupID = (jid: string) => jid?.endsWith ('@g.us')

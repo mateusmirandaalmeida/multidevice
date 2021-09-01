@@ -6,7 +6,14 @@ import { Handler } from './../events/Handler';
 import { NoiseSocket } from './../socket/NoiseSocket';
 import { StorageService } from './StorageService';
 import { WaSignal } from './../signal/Signal';
-import { PairDeviceSuccessHandler } from './../events/PairDeviceSuccess/index';
+import { PairDeviceSuccessHandler } from './../events/PairDeviceSuccess';
+import { StreamErrorHandler } from './../events/StreamError';
+import { StreamFailureHandler } from './../events/StreamFailure/index';
+import { DevicesNotificationHandler } from './../events/DevicesNotification/index';
+import { MessageAckHandler } from './../events/MessageAck/index';
+import { MessageHandler } from './../events/Message/index';
+import { RetryReceiptHandler } from './../events/RetryReceipt/index';
+import { SuccessHandler } from './../events/Success/index';
 
 export class EventHandlerService {
     protected socket: NoiseSocket;
@@ -28,12 +35,19 @@ export class EventHandlerService {
      public initializeHandlers() {
         this.handlers.push(new PairDeviceHandler(this));
         this.handlers.push(new PairDeviceSuccessHandler(this));
+        this.handlers.push(new StreamErrorHandler(this));
+        this.handlers.push(new StreamFailureHandler(this));
+        this.handlers.push(new DevicesNotificationHandler(this));
+        this.handlers.push(new MessageAckHandler(this));
+        this.handlers.push(new RetryReceiptHandler(this));
+        this.handlers.push(new MessageHandler(this));
+        this.handlers.push(new SuccessHandler(this));
      }
 
      public async handle(stanza: WapNode) {
          const handler = await this.findHandler(stanza);
          if (!handler) {
-             console.log('invalid handler to', stanza.tag);
+             this.client.log('invalid handler to', stanza.tag);
              return;
          }
 
