@@ -3,6 +3,7 @@ import { WapJid } from './WapJid';
 import { DICTIONARIES } from './../utils/Utils';
 import { WapNode } from './WapNode';
 import { Binary, numUtf8Bytes } from './Binary';
+import zlib from 'zlib';
 
 const LIST1 = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', '�', '�', '�', '�'];
 const LIST2 = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
@@ -37,7 +38,8 @@ function D(e, t, r) {
     for (var n = 0, s = 0; s < e.length; s++) {
         var o = e.charCodeAt(s),
             l = null;
-        if ((48 <= o && o <= 57 ? (l = o - 48) : 255 === t ? (45 === o ? (l = 10) : 46 === o && (l = 11)) : 251 === t && 65 <= o && o <= 70 && (l = o - 55), null == l)) throw new Error(`Cannot nibble encode ${o}`);
+        if ((48 <= o && o <= 57 ? (l = o - 48) : 255 === t ? (45 === o ? (l = 10) : 46 === o && (l = 11)) : 251 === t && 65 <= o && o <= 70 && (l = o - 55), null == l))
+            throw new Error(`Cannot nibble encode ${o}`);
         s % 2 == 0 ? ((n = l << 4), s === e.length - 1 && ((n |= 15), r.writeUint8(n))) : ((n |= l), r.writeUint8(n));
     }
 }
@@ -51,105 +53,48 @@ function N(e, t) {
     }
 }
 
-function R(node: any, data: Binary) {
-    if (node == '') {
-        data.writeUint8(252);
-        data.writeUint8(0);
-
-        return;
-    }
-
-    const r = SINGLE_BYTE_TOKEN_MAP.get(node);
-    if (r == null) {
-        const DICT_INDEX = [236, 237, 238, 239];
-        for (let index = 0; index < DICTIONARIES_MAP.length; index++) {
-            const s = DICTIONARIES_MAP[index].get(node);
-            if (s != null) {
-                data.writeUint8(DICT_INDEX[index]);
-                data.writeUint8(s);
-                return;
-            }
+function R(e: any, t: Binary) {
+    var w = null;
+    if ('' === e) return t.writeUint8(252), void t.writeUint8(0);
+    var b = SINGLE_BYTE_TOKEN_MAP;
+    var r = b.get(e);
+    var c = [236, 237, 238, 239];
+    if (null == r) {
+        if (null == w) {
+            w = [];
+            for (var a = 0; a < DICTIONARIES_MAP.length; ++a) w.push(DICTIONARIES_MAP[a]);
         }
-
-        const numBytes = numUtf8Bytes(node);
-        if (numBytes < 128) {
-            if (!/[^0-9.-]+?/.exec(node)) {
-                D(node, 255, data);
-                return;
-            }
-
-            if (!/[^0-9A-F]+?/.exec(node)) {
-                D(node, 251, data);
-                return;
-            }
+        for (var n = 0; n < w.length; ++n) {
+            var s = w[n].get(e);
+            if (null != s) return t.writeUint8(c[n]), void t.writeUint8(s);
         }
-
-        N(numBytes, data);
-        data.writeString(node);
-        return;
-    }
-
-    data.writeUint8(r + 1);
+        var o = numUtf8Bytes(e);
+        if (o < 128) {
+            if (!/[^0-9.-]+?/.exec(e)) return void D(e, 255, t);
+            if (!/[^0-9A-F]+?/.exec(e)) return void D(e, 251, t);
+        }
+        N(o, t), t.writeString(e);
+    } else t.writeUint8(r + 1);
 }
 
-function M(node: any, data: Binary) {
-    if (node?.tag == undefined) {
-        data.writeUint8(248);
-        data.writeUint8(0);
-
-        return;
-    }
-
-    let attrsLength = 1;
-    if (node.attrs) {
-        attrsLength += 2 * Object.keys(node.attrs).length;
-    }
-
-    if (node.content) {
-        attrsLength++;
-    }
-
-    if (attrsLength < 256) {
-        data.writeUint8(248);
-        data.writeUint8(attrsLength);
-    }
-
-    if (attrsLength > 256 && attrsLength < 65536) {
-        data.writeUint8(249);
-        data.writeUint16(attrsLength);
-    }
-
-    O(node.tag, data);
-
-    if (node.attrs) {
-        Object.keys(node.attrs).forEach((key) => {
-            R(key, data);
-            O(node.attrs[key], data);
-        });
-    }
-
-    if (Array.isArray(node.content)) {
-        if (node.content.length < 256) {
-            data.writeUint8(248);
-            data.writeUint8(node.content.length);
-        }
-
-        if (node.content.length > 256 && node.content.length < 65536) {
-            data.writeUint8(249);
-            data.writeUint16(node.content.length);
-        }
-
-        for (let i = 0; i < node.content.length; i++) {
-            M(node.content[i], data);
-        }
-        return;
-    }
-
-    if (!node.content) {
-        return;
-    }
-
-    return O(node.content, data);
+function M(e: any, t: Binary) {
+    var p = 248;
+    var f = 249;
+    if (void 0 === e.tag) return t.writeUint8(p), void t.writeUint8(0);
+    var r = 1;
+    e.attrs && (r += 2 * Object.keys(e.attrs).length),
+        e.content && r++,
+        r < 256 ? (t.writeUint8(p), t.writeUint8(r)) : r < 65536 && (t.writeUint8(f), t.writeUint16(r)),
+        O(e.tag, t),
+        e.attrs &&
+            Object.keys(e.attrs).forEach((r) => {
+                R(r, t), O(e.attrs[r], t);
+            });
+    var a = e.content;
+    if (Array.isArray(a)) {
+        a.length < 256 ? (t.writeUint8(p), t.writeUint8(a.length)) : a.length < 65536 && (t.writeUint8(f), t.writeUint16(a.length));
+        for (var i = 0; i < a.length; i++) M(a[i], t);
+    } else a && O(a, t);
 }
 
 function L(data: Binary, t: boolean) {
@@ -180,10 +125,10 @@ function L(data: Binary, t: boolean) {
     }
 
     if (n === 250) {
-      const user = L(data, true);
-      if (null != user && 'string' != typeof user) throw new Error(`Decode string got invalid value ${String(t)}, string expected`);
+        const user = L(data, true);
+        if (null != user && 'string' != typeof user) throw new Error(`Decode string got invalid value ${String(t)}, string expected`);
 
-      return WapJid.create(user, decodeStanzaString(data));
+        return WapJid.create(user, decodeStanzaString(data));
     }
 
     if (n === 247) {
@@ -229,49 +174,23 @@ function L(data: Binary, t: boolean) {
     return singleToken;
 }
 
-function O(node: any, data: Binary) {
-    if (data == null) {
-        data.writeUint8(0);
-        return;
-    }
-
-    if (node instanceof WapNode) {
-        M(node, data);
-        return;
-    }
-
-    if (node instanceof WapJid) {
-        const jid = node.getInnerJid();
-        if (jid.type == WapJid.JID_AD) {
-            data.writeUint8(247);
-            data.writeUint8(jid.agent);
-            data.writeUint8(jid.device);
-
-            return O(jid.user, data);
+function O(e: any, t: Binary) {
+    if (null == e) t.writeUint8(0);
+    else if (e instanceof WapNode) M(e, t);
+    else if (e instanceof WapJid) {
+        var r = e.getInnerJid();
+        if (r.type === WapJid.JID_AD) {
+            var { user: a, agent: i, device: n } = r;
+            t.writeUint8(247), t.writeUint8(i), t.writeUint8(n), O(a, t);
+        } else {
+            var { user: s, server: l } = r;
+            t.writeUint8(250), null != s ? O(s, t) : t.writeUint8(0), O(l, t);
         }
-
-        if (jid.type == WapJid.JID) {
-            data.writeUint8(250);
-            if (jid.user != null) {
-                return O(jid.user, data);
-            }
-
-            data.writeUint8(0);
-            return O(jid.server, data);
-        }
+    } else if ('string' == typeof e) R(e, t);
+    else {
+        if (!(e instanceof Uint8Array)) throw new Error('Invalid payload type ' + typeof e);
+        N(e.length, t), t.writeByteArray(e);
     }
-
-    if (typeof node == 'string') {
-        return R(node, data);
-    }
-
-    if (!(node instanceof Uint8Array)) {
-        console.log(node);
-        throw new Error('Invalid payload type ' + typeof node);
-    }
-
-    N(node.length, data);
-    data.writeByteArray(node);
 }
 
 function decodeStanzaString(data: Binary) {
@@ -321,7 +240,7 @@ export const buildWapNode = (e: any) => {
 };
 
 export const encodeStanza = (e) => {
-    console.log('will send to server', e);
+    //console.log('will send to server', e);
     const node = e instanceof WapNode ? e : buildWapNode(e);
 
     const data = new Binary();
@@ -337,6 +256,24 @@ export const encodeStanza = (e) => {
     return result;
 };
 
+export const unpackStanza = async (e): Promise<Binary> => {
+    let data = new Binary(e);
+    if (2 & data.readUint8()) {
+        return new Promise((res) => {
+            zlib.inflate(data.readByteArray(), (err, result) => {
+                if (err) {
+                    console.error('err to decode stanza');
+                    return;
+                }
+
+                res(new Binary(result));
+            });
+        });
+    }
+
+    return data;
+};
+
 let ID_COUNT = 1;
 let UNIQUE_ID = null;
 
@@ -347,4 +284,8 @@ export const generateId = function () {
     }
 
     return `${UNIQUE_ID}${ID_COUNT++}`;
+};
+
+export const CUSTOM_STRING = function (e) {
+    return e;
 };
