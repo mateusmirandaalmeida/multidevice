@@ -476,6 +476,11 @@ export class WaClient extends EventEmitter {
         const tag = stanza.tag;
         this.log('received tag node', tag);
 
+        if (tag == 'xmlstreamend') {
+            this.socketConn.restart();
+            return;
+        }
+
         if (stanza.attrs && stanza.attrs.id && this.socketWaitIqs[stanza.attrs.id]) {
             this.socketWaitIqs[stanza.attrs.id].resolve(stanza);
             delete this.socketWaitIqs[stanza.attrs.id];
