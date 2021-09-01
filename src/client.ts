@@ -576,6 +576,10 @@ export class WaClient extends EventEmitter {
                 }
             }
 
+            const shouldHaveIdentity = participants.some((p) => {
+                return p.content.some((c) => c.attrs.type == 'pkmsg');
+            });
+
             const stanza = new WapNode(
                 'message',
                 {
@@ -585,7 +589,7 @@ export class WaClient extends EventEmitter {
                     type: 'text',
                 },
                 [
-                    new WapNode('participants', {}, participants),
+                    ...(shouldHaveIdentity ? [new WapNode('participants', {}, participants)] : []),
                     new WapNode(
                         'enc',
                         {
@@ -594,7 +598,7 @@ export class WaClient extends EventEmitter {
                         },
                         new Uint8Array(ciphertext),
                     ),
-                    new WapNode('device-identity', {}, deviceIdentity),
+                    ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : []),
                 ],
             );
             this.sendMessageAndWait(stanza);
@@ -647,6 +651,10 @@ export class WaClient extends EventEmitter {
 
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
 
+        const shouldHaveIdentity = participants.some((p) => {
+            return p.content.some((c) => c.attrs.type == 'pkmsg');
+        });
+
         const stanza = new WapNode(
             'message',
             {
@@ -654,7 +662,7 @@ export class WaClient extends EventEmitter {
                 type: 'text',
                 to: WapJid.create(destinationPhone, 's.whatsapp.net'),
             },
-            [new WapNode('participants', {}, participants), new WapNode('device-identity', {}, deviceIdentity)],
+            [new WapNode('participants', {}, participants), ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : [])],
         );
 
         const frame = encodeStanza(stanza);
