@@ -621,9 +621,9 @@ export class WaClient extends EventEmitter {
 
         const participants: WapNode[] = [];
 
-        participants.push(await this.createWapNodeParticipant(message, WapJid.createAD(destinationPhone, 0, 0, true)));
+        participants.push(await this.createWapNodeParticipant(message, WapJid.createAD(destinationPhone, 0, 0)));
 
-        participants.push(await this.createWapNodeParticipant(deviceSentMessage, WapJid.createAD(this.me.getUser(), 0, 0, true)));
+        participants.push(await this.createWapNodeParticipant(deviceSentMessage, WapJid.createAD(this.me.getUser(), 0, 0)));
 
         const devices: WapJid[] = await this.getUSyncDevices([WapJid.createAD(destinationPhone, 0, 0), WapJid.createAD(this.me.getUser(), 0, 0)]);
 
