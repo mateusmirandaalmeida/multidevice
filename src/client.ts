@@ -222,7 +222,6 @@ export class WaClient extends EventEmitter {
         this.socketConn.onClose = this.onNoiseSocketClose.bind(this);
         this.socketConn.setOnFrame(this.onNoiseNewFrame.bind(this));
     };
-    
 
     private onNoiseSocketClose = () => {
         this.destroyKeepAlive();
@@ -240,6 +239,14 @@ export class WaClient extends EventEmitter {
             const frame = encodeStanza(stanza);
             this.socketConn.sendFrame(frame);
         });
+    }
+
+    onlySendFrame(stanza: WapNode) {
+        const frame = encodeStanza(stanza);
+        if (!this.socketConn) {
+            throw 'No Socket Handler';
+        }
+        this.socketConn.sendFrame(frame);
     }
 
     public uploadPreKeys = async () => {
@@ -345,7 +352,78 @@ export class WaClient extends EventEmitter {
         return this.advSecretKey;
     }
 
+    public async afterMessageDecrypt(node: WapNode) {
+        const isGroup = !!node.attrs.participant;
+        const isMe = isGroup
+      ? node.attrs.participant.getUser() == this.me.getUser()
+      : node.attrs.from.getUser() == this.me.getUser();
+        this.sendMessageAck(node)
+        isMe ? this.sendMessageSender(node) : this.sendMessageInactive(node);
+    }
+
+    public async sendMessageSender(node: WapNode) {
+        const isGroup = !!node.attrs.participant;
+        const stanza = new WapNode(
+          'receipt',
+          {
+            type: 'sender',
+            id: node.attrs.id,
+            ...(isGroup
+              ? { participant: node.attrs.participant }
+              : { recipient: node.attrs.recipient }),
+            to: node.attrs.from,
+          },
+          null,
+        );
+        this.onlySendFrame(stanza);
+      }
+    
+
+    public async sendMessageInactive(node: WapNode) {
+        const isGroup = !!node.attrs.participant;
+        const isStatus = node.attrs.from.isStatusV3();
+        const stanza = new WapNode(
+            'receipt',
+            {
+                type: 'inactive',
+                id: node.attrs.id,
+                to: isStatus ? WapJid.create('status', 'broadcast', null) : node.attrs.from,
+                ...(isGroup || isStatus
+                    ? {
+                          participant: node.attrs.participant,
+                      }
+                    : {}),
+            },
+            null,
+        );
+        this.onlySendFrame(stanza);
+    }
+
+    public async sendMessageAck(node: WapNode) {
+        const isGroup = !!node.attrs.participant;
+        const stanza = new WapNode(
+            'ack',
+            {
+                class: 'receipt',
+                id: node.attrs.id,
+                to: isGroup ? node.attrs.from : WapJid.create(this.me.getUser(), 'c.us', null),
+                ...(isGroup
+                    ? {
+                          participant: WapJid.createAD(this.me.getUser(), 0, 0, true),
+                      }
+                    : {}),
+            },
+            null,
+        );
+        this.onlySendFrame(stanza);
+    }
+
     public async sendRetryReceipt(node: WapNode) {
+        this.decryptRetryCount[node.attrs.id] = (this.decryptRetryCount[node.attrs.id] || 0) + 1;
+        if (this.decryptRetryCount[node.attrs.id] >= 50) {
+            delete this.decryptRetryCount[node.attrs.id];
+            return;
+        }
         const isGroup = !!node.attrs.participant;
         const registrationInfo = {
             registrationId: await this.storageSignal.getOurRegistrationId(),
@@ -597,7 +675,7 @@ export class WaClient extends EventEmitter {
     }
 
     public async sendMessage(jid: string | WapJid, message: WAProto.IMessage) {
-        if (typeof jid == 'string' && isGroupID(jid) || jid instanceof WapJid && jid.isGroup()) {
+        if ((typeof jid == 'string' && isGroupID(jid)) || (jid instanceof WapJid && jid.isGroup())) {
             return this.sendMessageGroup(jid, message);
         }
 
@@ -609,7 +687,7 @@ export class WaClient extends EventEmitter {
         const account = await this.storageService.get('account');
         const destinationPhone = typeof jid == 'string' ? jid : jid.getUser();
         const destinationJid = new Wid(`${destinationPhone}@c.us`);
-      
+
         const deviceSentMessage = {
             deviceSentMessage: {
                 destinationJid: destinationJid.toString({
@@ -638,7 +716,7 @@ export class WaClient extends EventEmitter {
             }
         }
 
-        console.dir(participants, { depth: null })
+        console.dir(participants, { depth: null });
 
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
 
@@ -652,10 +730,9 @@ export class WaClient extends EventEmitter {
             [new WapNode('participants', {}, participants), new WapNode('device-identity', {}, deviceIdentity)],
         );
 
-
         const frame = encodeStanza(stanza);
         this.socketConn.sendFrame(frame);
-    };
+    }
 
     createWapNodeParticipant = async (body, jidAd) => {
         try {
@@ -680,7 +757,6 @@ export class WaClient extends EventEmitter {
                 ],
             );
         } catch (e) {
-            console.log('err', e);
             if (e && e.name == 'SessionError') {
                 await this.ensureIdentityUser(jidAd, true);
                 return this.createWapNodeParticipant(body, jidAd);

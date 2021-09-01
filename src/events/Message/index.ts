@@ -26,7 +26,7 @@ export class MessageHandler extends Handler {
                             });
                         }
                     } catch (e) {
-                        //await this.client.sendRetryReceipt(node);
+                        await this.client.sendRetryReceipt(node);
                     }
                     break;
 
@@ -54,9 +54,9 @@ export class MessageHandler extends Handler {
                                 ...messageProto,
                             });
                         }
+                        this.client.afterMessageDecrypt(node)
                     } catch (e) {
-                        console.log('err', e);
-                        //await this.client.sendRetryReceipt(node);
+                        await this.client.sendRetryReceipt(node);
                     }
                     break;
 
