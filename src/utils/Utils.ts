@@ -273,14 +273,34 @@ export const getGotStream = async(url: string | URL, options: Options & { isStre
   return fetched
 } 
 
+export enum MessageType {
+  text = 'conversation',
+  extendedText = 'extendedTextMessage',
+  contact = 'contactMessage',
+  contactsArray = 'contactsArrayMessage',
+  groupInviteMessage = 'groupInviteMessage',
+  location = 'locationMessage',
+  liveLocation = 'liveLocationMessage',
+  protocolMessage = 'protocolMessage',
+  historySync = 'historySync',
+  appState = 'appState',
+
+  image = 'imageMessage',
+  video = 'videoMessage',
+  sticker = 'stickerMessage',
+  document = 'documentMessage',
+  audio = 'audioMessage',
+  product = 'productMessage'
+}
+
 export const HKDFInfoKeys = {
-  ['image']: 'WhatsApp Image Keys',
-  ['audio']: 'WhatsApp Audio Keys',
-  ['video']: 'WhatsApp Video Keys',
-  ['document']: 'WhatsApp Document Keys',
-  ['sticker']: 'WhatsApp Image Keys',
-  ['historySync']: 'WhatsApp History Keys',
-  ['appState']: 'WhatsApp App State Keys'
+  [MessageType.image]: 'WhatsApp Image Keys',
+  [MessageType.audio]: 'WhatsApp Audio Keys',
+  [MessageType.video]: 'WhatsApp Video Keys',
+  [MessageType.document]: 'WhatsApp Document Keys',
+  [MessageType.sticker]: 'WhatsApp Image Keys',
+  [MessageType.historySync]: 'WhatsApp History Keys',
+  [MessageType.appState]: 'WhatsApp App State Keys'
 }
 
 export const getMediaKeys = async (buffer: any, type: string) => {

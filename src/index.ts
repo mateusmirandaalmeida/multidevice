@@ -1,4 +1,6 @@
 import { WaClient } from './client';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import mimeTypes from 'mime-types';
 
 (async () => {
     /** first client */
@@ -18,6 +20,20 @@ import { WaClient } from './client';
 
     session.on('message', async (message: any) => {
         console.log('message received', message);
+
+        if (session.isMedia(message)) {
+            const buffer = await session.downloadMedia(message) as Buffer;
+            const messageType = session.getMessageType(message);
+
+            if (!existsSync('./files')) {
+                mkdirSync('./files');
+            }
+
+            writeFileSync(`./files/${message.externalId}.${mimeTypes.extension(message[messageType].mimetype) ?? ''}`, buffer, {
+                flag: 'wx'
+            });
+        }
+
         const conversation = message.deviceSentMessage ? message.deviceSentMessage.message.conversation : message.conversation;
 
         if (!conversation) {

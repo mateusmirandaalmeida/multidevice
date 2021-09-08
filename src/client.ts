@@ -14,6 +14,7 @@ import {
     downloadAndDecrypt,
     USER_JID_SUFFIX,
     wapBytes,
+    MessageType,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -1039,27 +1040,97 @@ export class WaClient extends EventEmitter {
         console.log('downloaded sync', syncData);
     }
 
+    public getMessageType(message: WAProto.IMessage) {
+        const msg = message.deviceSentMessage ? message.deviceSentMessage.message : message;
+
+        if (msg.imageMessage) {
+            return MessageType.image;
+        }
+
+        if (msg.stickerMessage) {
+            return MessageType.sticker;
+        }
+
+        if (msg.videoMessage) {
+            return MessageType.video;
+        }
+
+        if (msg.audioMessage) {
+            return MessageType.audio;
+        }
+
+        if (msg.documentMessage) {
+            return MessageType.document;
+        }
+
+        if (msg.productMessage) {
+            return MessageType.product;
+        }
+
+        if (msg.conversation) {
+            return MessageType.text;
+        }
+
+        throw new Error('invalid msg type');
+    }
+
+    public isMedia(message: WAProto.IMessage) {
+        return [MessageType.image, MessageType.video, MessageType.sticker, MessageType.document, MessageType.audio].includes(this.getMessageType(message));
+    }
+
+    public async downloadMedia(message: WAProto.IMessage) {
+        const type = this.getMessageType(message);
+
+        if (!this.isMedia(message)) {
+            console.log('err to download not a media message');
+            return null;
+        }
+
+        const content = message[type] as any;
+        if (!content) {
+            console.log('invalid media content');
+            return null;
+        }
+
+        if (!content.url) {
+            return null;
+
+            /*return this.downloadFromMediaConn(
+                {
+                    directPath: content.directPath,
+                    encFilehash: encodeB64(content.fileEncSha256),
+                    filehash: encodeB64(content.fileSha256),
+                    mediaKey: content.mediaKey,
+                    type: 'md-msg-hist',
+                    messageType: 'historySync',
+                },
+                'buffer',
+            );*/
+        }
+
+        return this.downloadMediaMessage('buffer', content.url, content.mediaKey, type);
+    }
+
+    private async downloadMediaMessage (type: string, url: string, mediaKey: Uint8Array, messageType: MessageType) {
+        const stream = await downloadAndDecrypt(url, mediaKey, messageType);
+        if (type === 'buffer') {
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+            return buffer;
+        }
+        return stream;
+    };
+
+
     private async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
         const mediaConn = await this.refreshMediaConn(forceGet);
 
-        console.log('using mediaConn', mediaConn);
-
-        let url = media.url ?? media.directPath ?? null;
+        let url = media.directPath ?? null;
         if (!url) {
             throw new Error('invalid media url');
         }
-
-        const downloadMediaMessage = async (url: string) => {
-            const stream = await downloadAndDecrypt(url, media.mediaKey, media.messageType);
-            if (type === 'buffer') {
-                let buffer = Buffer.from([]);
-                for await (const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
-                }
-                return buffer;
-            }
-            return stream;
-        };
 
         for (const host of mediaConn.hosts) {
             const reqUrl = `https://${host}${url}&hash=${media.encFilehash}&mms-type=${media.type}&__wa-mms=`;
@@ -1067,7 +1138,7 @@ export class WaClient extends EventEmitter {
             console.log('downloading media', reqUrl);
 
             try {
-                const data = await downloadMediaMessage(reqUrl);
+                const data = await this.downloadMediaMessage(type, reqUrl, media.mediaKey, media.messageType);
 
                 return data;
             } catch (err) {
