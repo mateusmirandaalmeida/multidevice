@@ -1071,7 +1071,7 @@ export class WaClient extends EventEmitter {
             return MessageType.text;
         }
 
-        throw new Error('invalid msg type');
+        return null;
     }
 
     public isMedia(message: WAProto.IMessage) {
