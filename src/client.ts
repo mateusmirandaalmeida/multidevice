@@ -7,12 +7,11 @@ import {
     KEY_BUNDLE_TYPE,
     xmppPreKey,
     xmppSignedPreKey,
-    MESSAGE_TYPE,
     writeRandomPadMax16,
-    unpadRandomMax16,
     phashV2,
     generateMessageID,
     isGroupID,
+    downloadAndDecrypt
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -27,7 +26,7 @@ import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
 import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
-import { proto as WAProto } from './proto/WAMessage';
+import { proto, proto as WAProto } from './proto/WAMessage';
 
 import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
@@ -35,13 +34,12 @@ import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
 import { Wid } from './proto/Wid';
 
-import * as Crypto from 'crypto';
 import { deviceParser, e2eSessionParser } from './proto/ProtoParsers';
 
 import { EventEmitter } from 'stream';
 import { EventHandlerService } from './services/EventHandlerService';
-
-const crypto = Crypto.webcrypto as any;
+import { IMediaConn } from './interfaces/IMediaConn';
+import { inflate } from 'zlib';
 
 const sessions = {};
 
@@ -69,6 +67,8 @@ export class WaClient extends EventEmitter {
     private me: WapJid;
     private socketConn: NoiseSocket;
     private enableLog: boolean;
+
+    private mediaConn: IMediaConn;
 
     private registrationId: number;
 
@@ -826,6 +826,120 @@ export class WaClient extends EventEmitter {
                 }),
         };
         return data;
+    }
+
+    public async processProtocolMessage(node: WapNode, msgInfo: any, message: WAProto.IMessage) {
+        console.log(message);
+        const protocolMessage = message.protocolMessage;
+
+        if (protocolMessage.historySyncNotification) {
+            await this.processHistorySyncNotification(protocolMessage.historySyncNotification);
+        }
+    }
+
+    private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
+        const buffer = await this.downloadFromMediaConn({
+            directPath: historyNotification.directPath,
+            encFilehash: encodeB64(historyNotification.fileEncSha256),
+            filehash: encodeB64(historyNotification.fileSha256),
+            mediaKey: historyNotification.mediaKey,
+            type: 'md-msg-hist',
+            messageType: 'historySync'
+        }, 'buffer');
+
+        const dataPromise = new Promise<Buffer>((res) => {
+            inflate(buffer as Buffer, (err, result) => {
+                if (err) {
+                    console.error('err to inflate history sync');
+                    return;
+                }
+
+                res(result);
+            });
+        });
+
+        const syncData = WAProto.HistorySync.decode(await dataPromise);
+
+        console.log('downloaded sync', syncData);
+    }
+
+    private async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
+        const mediaConn = await this.refreshMediaConn(forceGet);
+
+        console.log('using mediaConn', mediaConn);
+    
+        let url = media.url ?? media.directPath ?? null;
+        if (!url) {
+            throw new Error("invalid media url");
+        }
+
+        const downloadMediaMessage = async (url: string) => {
+            const stream = await downloadAndDecrypt(url, media.mediaKey, media.messageType)
+            if(type === 'buffer') {
+                let buffer = Buffer.from([])
+                for await(const chunk of stream) {
+                    buffer = Buffer.concat([buffer, chunk])
+                }
+                return buffer
+            }
+            return stream
+        }
+        
+
+        for (const host of mediaConn.hosts) {
+            const reqUrl = `https://${host}${url}&hash=${media.encFilehash}&mms-type=${media.type}&__wa-mms=`;
+
+            console.log('downloading media', reqUrl);
+
+            try {
+                const data = await downloadMediaMessage(reqUrl);
+
+                return data;
+            } catch(err) {
+                console.log('err to download', err);
+            }
+        }
+    }
+
+    private async refreshMediaConn(forceGet = false) {
+        if (!this.mediaConn || forceGet || new Date().getTime() - this.mediaConn.fetchDate.getTime() > this.mediaConn.TTL * 1000) {
+            this.mediaConn = await this.sendQueryMediaConn();
+            this.mediaConn.fetchDate = new Date();
+        }
+
+        return this.mediaConn;
+    }
+
+    private async sendQueryMediaConn() {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                type: 'set',
+                xmlns: 'w:m',
+                to: S_WHATSAPP_NET,
+            },
+            [new WapNode('media_conn')],
+        );
+
+        const result = await this.sendMessageAndWait(stanza);
+
+        const mediaConn = result.child('media_conn');
+        if (!mediaConn) {
+            throw new Error('invalid media conn');
+        }
+
+        const hosts = mediaConn.mapChildrenWithTag('host', (host: WapNode) => {
+            return host.attrs.hostname;
+        });
+
+        return <IMediaConn>{
+            auth: mediaConn.attrString('auth'),
+            TTL: mediaConn.attrInt('ttl'),
+            authTTL: mediaConn.attrInt('auth_ttl'),
+            maxBuckets: mediaConn.attrInt('max_buckets'),
+            hosts,
+        };
     }
 
     private createKeepAlive = () => {
