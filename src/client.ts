@@ -11,7 +11,9 @@ import {
     phashV2,
     generateMessageID,
     isGroupID,
-    downloadAndDecrypt
+    downloadAndDecrypt,
+    USER_JID_SUFFIX,
+    wapBytes,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -768,6 +770,176 @@ export class WaClient extends EventEmitter {
         return devicesToReturn;
     };
 
+    async setGroupName(groupPhone: string, name: string) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [wapBytes('subject', null, name)],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupDescription(groupPhone: string, description: string) {
+        const info = await this.getGroupInfo(groupPhone);
+        const prev = info.description ? info.description.attrs.id : null;
+        const content = description
+            ? wapBytes(
+                  'description',
+                  {
+                      id: generateId(),
+                      ...(prev ? { prev } : {}),
+                  },
+                  wapBytes('body', null, description),
+              )
+            : wapBytes(
+                  'description',
+                  {
+                      delete: 'true',
+                      ...(prev ? { prev } : {}),
+                  },
+                  null,
+              );
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [content],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupSettingsSendMessage(groupPhone: string, onlyAdmin: boolean) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [new WapNode(onlyAdmin ? 'announcement' : 'not_announcement', {}, null)],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async getGroupInvitationCode(groupPhone: string): Promise<string> {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'get',
+                xmlns: 'w:g2',
+            },
+            [new WapNode('invite', {}, null)],
+        );
+        const invitationCode = await this.sendMessageAndWait(stanza);
+        return invitationCode.content[0].attrs.code;
+    }
+
+    async addOrRemoveGroupParticipants(groupPhone: string, type: 'ADD' | 'REMOVE', participants: string[]) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode(
+                    type == 'ADD' ? 'add' : 'remove',
+                    {},
+                    participants.map((p) => {
+                        return new WapNode(
+                            'participant',
+                            {
+                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                            },
+                            null,
+                        );
+                    }),
+                ),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async addOrRemoveGroupAdmin(groupPhone: string, type: 'PROMOTE' | 'DEMOTE', participants: string[]) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode(
+                    type == 'PROMOTE' ? 'promote' : 'demote',
+                    {},
+                    participants.map((p) => {
+                        return new WapNode(
+                            'participant',
+                            {
+                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                            },
+                            null,
+                        );
+                    }),
+                ),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupImage(groupPhone: string, image: Uint8Array) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:profile:picture',
+            },
+            [new WapNode('picture', { type: 'image' }, image)],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async leaveGroup(groupPhone: string) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(null, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode('leave', {}, [
+                    new WapNode(
+                        'group',
+                        {
+                            id: WapJid.create(groupPhone, 'g.us'),
+                        },
+                        null,
+                    ),
+                ]),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
     public async createGroup(name: string, participants: string[]) {
         const participantsNode = participants.map((participant) => {
             return new WapNode('participant', {
@@ -819,6 +991,7 @@ export class WaClient extends EventEmitter {
             id: group.attrs.id,
             creation: group.attrs.creation,
             creator: group.attrs.creator,
+            description: group.content.find((c) => c.tag == 'description'),
             participants: group.content
                 .filter((content: WapNode) => content.tag === 'participant')
                 .map((content: WapNode) => {
@@ -838,14 +1011,17 @@ export class WaClient extends EventEmitter {
     }
 
     private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
-        const buffer = await this.downloadFromMediaConn({
-            directPath: historyNotification.directPath,
-            encFilehash: encodeB64(historyNotification.fileEncSha256),
-            filehash: encodeB64(historyNotification.fileSha256),
-            mediaKey: historyNotification.mediaKey,
-            type: 'md-msg-hist',
-            messageType: 'historySync'
-        }, 'buffer');
+        const buffer = await this.downloadFromMediaConn(
+            {
+                directPath: historyNotification.directPath,
+                encFilehash: encodeB64(historyNotification.fileEncSha256),
+                filehash: encodeB64(historyNotification.fileSha256),
+                mediaKey: historyNotification.mediaKey,
+                type: 'md-msg-hist',
+                messageType: 'historySync',
+            },
+            'buffer',
+        );
 
         const dataPromise = new Promise<Buffer>((res) => {
             inflate(buffer as Buffer, (err, result) => {
@@ -867,24 +1043,23 @@ export class WaClient extends EventEmitter {
         const mediaConn = await this.refreshMediaConn(forceGet);
 
         console.log('using mediaConn', mediaConn);
-    
+
         let url = media.url ?? media.directPath ?? null;
         if (!url) {
-            throw new Error("invalid media url");
+            throw new Error('invalid media url');
         }
 
         const downloadMediaMessage = async (url: string) => {
-            const stream = await downloadAndDecrypt(url, media.mediaKey, media.messageType)
-            if(type === 'buffer') {
-                let buffer = Buffer.from([])
-                for await(const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk])
+            const stream = await downloadAndDecrypt(url, media.mediaKey, media.messageType);
+            if (type === 'buffer') {
+                let buffer = Buffer.from([]);
+                for await (const chunk of stream) {
+                    buffer = Buffer.concat([buffer, chunk]);
                 }
-                return buffer
+                return buffer;
             }
-            return stream
-        }
-        
+            return stream;
+        };
 
         for (const host of mediaConn.hosts) {
             const reqUrl = `https://${host}${url}&hash=${media.encFilehash}&mms-type=${media.type}&__wa-mms=`;
@@ -895,7 +1070,7 @@ export class WaClient extends EventEmitter {
                 const data = await downloadMediaMessage(reqUrl);
 
                 return data;
-            } catch(err) {
+            } catch (err) {
                 console.log('err to download', err);
             }
         }

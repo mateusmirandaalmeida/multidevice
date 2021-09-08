@@ -335,3 +335,33 @@ export const downloadAndDecrypt = async (url: string, mediaKey: Uint8Array, type
 
   return fetched.pipe(output, { end: true });
 }
+
+export function wapBytes(e, t, r) {
+  var a = null;
+  if (t && null != t.children)
+    throw new Error(
+      'Children should not be passed via props (see eslint check "react/no-children-props")',
+    );
+  if (Array.isArray(r)) a = r.filter(Boolean);
+  else if ('string' == typeof r) a = Binary.build(r).readByteArray();
+  else if (r instanceof ArrayBuffer) a = new Uint8Array(r);
+  else if (r instanceof Uint8Array) a = r;
+  else {
+    for (var n = [], s = 2; s < arguments.length; s++) {
+      var o = arguments[s];
+      o && n.push(o);
+    }
+    a = n;
+  }
+  Array.isArray(a) && 0 === a.length && (a = null);
+  var l = {};
+  if (t) {
+    var d = t;
+    Object.keys(d).forEach((t) => {
+      var r = d[t];
+      if (null == r) throw new Error(`Attr ${t} in <${e}> is null`);
+      r !== { sentinel: 'DROP_ATTR' } && (l[t] = r);
+    });
+  }
+  return new WapNode(e, l, a);
+}
