@@ -30,7 +30,7 @@ import got from 'got';
     });
 
     session.on('message', async (message: any) => {
-        console.log('message received', (message));
+        console.log('message received', message);
 
         const messageType = session.getMessageType(message);
 
