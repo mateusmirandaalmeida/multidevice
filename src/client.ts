@@ -808,7 +808,7 @@ export class WaClient extends EventEmitter {
     }
 
     public async sendMessageGroupInternal(jid: string | WapJid, message: WAProto.IMessage) {
-        const phone = typeof jid == 'string' ? jid.replace('g.us', '') : jid.getUser();
+        const phone = typeof jid == 'string' ? jid.replace('@g.us', '') : jid.getUser();
 
         const encodedMessage = new Binary(WAProto.Message.encode(message).finish());
         writeRandomPadMax16(encodedMessage);
@@ -877,7 +877,7 @@ export class WaClient extends EventEmitter {
         // }
 
         const account = await this.storageService.get('account');
-        const destinationPhone = typeof jid == 'string' ? jid.replace('s.whatsapp.net', '').replace('c.us', '') : jid.getUser();
+        const destinationPhone = typeof jid == 'string' ? jid.replace('@s.whatsapp.net', '').replace('@c.us', '') : jid.getUser();
         const destinationJid = new Wid(`${destinationPhone}@c.us`);
 
         const deviceSentMessage = {
@@ -1293,7 +1293,7 @@ export class WaClient extends EventEmitter {
                 id: generateId(),
                 type: 'get',
                 xmlns: 'w:g2',
-                to: WapJid.create(groupPhone.replace('g.us', ''), 'g.us'),
+                to: WapJid.create(groupPhone.replace('@g.us', ''), 'g.us'),
             },
             [new WapNode('query', { request: 'interactive' })],
         );
