@@ -1311,7 +1311,7 @@ export class WaClient extends EventEmitter {
             name: group.attrs.subject,
             id: group.attrs.id,
             creation: group.attrs.creation,
-            creator: group.attrs.creator,
+            creator: group.attrs.creator.toString(),
             restrict: result.hasChild('locked'),
             announce: result.hasChild('announcement'),
             description,
