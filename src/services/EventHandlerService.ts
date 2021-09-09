@@ -14,6 +14,7 @@ import { MessageAckHandler } from './../events/MessageAck/index';
 import { MessageHandler } from './../events/Message/index';
 import { RetryReceiptHandler } from './../events/RetryReceipt/index';
 import { SuccessHandler } from './../events/Success/index';
+import { GroupNotificationHandler } from '../events/GroupNotification';
 
 export class EventHandlerService {
     protected socket: NoiseSocket;
@@ -38,6 +39,7 @@ export class EventHandlerService {
         this.handlers.push(new StreamErrorHandler(this));
         this.handlers.push(new StreamFailureHandler(this));
         this.handlers.push(new DevicesNotificationHandler(this));
+        this.handlers.push(new GroupNotificationHandler(this));
         this.handlers.push(new MessageAckHandler(this));
         this.handlers.push(new RetryReceiptHandler(this));
         this.handlers.push(new MessageHandler(this));

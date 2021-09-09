@@ -1,7 +1,8 @@
 import { WaClient } from './client';
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, readFile, readFileSync } from 'fs';
 import mimeTypes from 'mime-types';
 import { MessageType } from './utils/Utils';
+import got from 'got';
 
 (async () => {
     /** first client */
@@ -10,6 +11,7 @@ import { MessageType } from './utils/Utils';
         onSocketClose: (e) => {
             console.error(e);
         },
+        //log: true
     });
 
     console.log('open connection');
@@ -19,6 +21,14 @@ import { MessageType } from './utils/Utils';
         console.log('open connection', me);
     });
 
+    session.on('qr', (qr: string) => {
+        console.log('received qr', qr);
+    })
+
+    session.on('group-participants-update', (update: any) => {
+        console.log('received group update', update);
+    });
+
     session.on('message', async (message: any) => {
         console.log('message received', message);
 
@@ -26,7 +36,7 @@ import { MessageType } from './utils/Utils';
 
         let mediaBuffer = null;
         if (session.isMedia(message)) {
-            mediaBuffer = await session.downloadMedia(message) as Buffer;
+            mediaBuffer = (await session.downloadMedia(message)) as Buffer;
             if (!existsSync('./files')) {
                 mkdirSync('./files');
             }
@@ -43,18 +53,14 @@ import { MessageType } from './utils/Utils';
         }
 
         if (conversation == '!ping') {
-            await session.sendMessage(message.chat, {
-                conversation: 'pong',
-            });
+            await session.sendMessage(message.chat, 'pong', MessageType.text);
 
             return;
         }
-        
+
         if (conversation.startsWith('!creategroup')) {
             if (message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command in group not allowned',
-                });
+                await session.sendMessage(message.chat, 'Command in group not allowned', MessageType.text);
 
                 return;
             }
@@ -64,27 +70,21 @@ import { MessageType } from './utils/Utils';
 
             const name = params.length > 0 ? params.join(' ') : null;
             if (!name) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Invalid group name',
-                });
+                await session.sendMessage(message.chat, 'Invalid group name', MessageType.text);
 
                 return;
             }
 
             const user = message.chat.getUser();
 
-            await session.sendMessage(message.chat, {
-                conversation: `Creating group *${name}* with: ${user}`,
-            });
+            await session.sendMessage(message.chat, `Creating group *${name}* with: ${user}`, MessageType.text);
 
             const result = await session.createGroup(name, [user]);
 
             console.log('created group', result.content);
 
             const id = result.content[0].attrs.id;
-            await session.sendMessage(message.chat, {
-                conversation: `Group created with id: *${id}*`,
-            });
+            await session.sendMessage(message.chat, `Group created with id: *${id}*`, MessageType.text);
 
             await session.addOrRemoveGroupAdmin(id, 'PROMOTE', [user]);
 
@@ -93,9 +93,7 @@ import { MessageType } from './utils/Utils';
 
         if (conversation.startsWith('!changename')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -107,25 +105,19 @@ import { MessageType } from './utils/Utils';
 
             const name = params.length > 0 ? params.join(' ') : null;
             if (!name) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Invalid group name',
-                });
+                await session.sendMessage(message.chat, 'Invalid group name', MessageType.text);
 
                 return;
             }
 
             await session.setGroupName(id, name);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group name has changed to *${name}*`,
-            });
+            await session.sendMessage(message.chat, `Group name has changed to *${name}*`, MessageType.text);
         }
 
         if (conversation.startsWith('!changedesc')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -139,16 +131,26 @@ import { MessageType } from './utils/Utils';
 
             await session.setGroupDescription(id, desc);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group description has changed to: ${desc}`,
-            });
+            await session.sendMessage(message.chat, `Group description has changed to: ${desc}`, MessageType.text);
+        }
+
+        if (conversation.startsWith('!invite')) {
+            if (!message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
+
+                return;
+            }
+
+            const id = message.chat.getUser();
+
+            const code = await session.getGroupInvitationCode(id);
+
+            await session.sendMessage(message.chat, `Group invite code: ${code}`, MessageType.text);
         }
 
         if (conversation.startsWith('!add')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -160,16 +162,12 @@ import { MessageType } from './utils/Utils';
 
             await session.addOrRemoveGroupParticipants(id, 'ADD', params);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group participants added *${params.join(',')}*`,
-            });
+            await session.sendMessage(message.chat, `Group participants added *${params.join(',')}*`, MessageType.text);
         }
-        
+
         if (conversation.startsWith('!remove')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -181,16 +179,12 @@ import { MessageType } from './utils/Utils';
 
             await session.addOrRemoveGroupParticipants(id, 'REMOVE', params);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group participants removed *${params.join(',')}*`,
-            });
+            await session.sendMessage(message.chat, `Group participants removed *${params.join(',')}*`, MessageType.text);
         }
 
         if (conversation.startsWith('!promote')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -202,16 +196,12 @@ import { MessageType } from './utils/Utils';
 
             await session.addOrRemoveGroupAdmin(id, 'PROMOTE', params);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group participants promoted to admin *${params.join(',')}*`,
-            });
+            await session.sendMessage(message.chat, `Group participants promoted to admin *${params.join(',')}*`, MessageType.text);
         }
-        
+
         if (conversation.startsWith('!demote')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -223,16 +213,35 @@ import { MessageType } from './utils/Utils';
 
             await session.addOrRemoveGroupAdmin(id, 'DEMOTE', params);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group participants promoted to user *${params.join(',')}*`,
-            });
+            await session.sendMessage(message.chat, `Group participants promoted to user *${params.join(',')}*`, MessageType.text);
+        }
+
+        if (conversation.startsWith('!changeurlpic')) {
+            if (!message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
+
+                return;
+            }
+
+            const id = message.chat.getUser();
+
+            const params = conversation.split(' ');
+            const url = params[1] ?? null;
+            if (!url) {
+                await session.sendMessage(message.chat, `Invalid url`, MessageType.text);
+
+                return;
+            }
+
+            const buffer = await got.get(url, { responseType: 'buffer' });
+            await session.setGroupImage(id, buffer.body);
+
+            await session.sendMessage(message.chat, `Group image has changed`, MessageType.text);
         }
 
         if (conversation.startsWith('!changepic')) {
             if (!message.chat.isGroup()) {
-                await session.sendMessage(message.chat, {
-                    conversation: 'Command allowned only in group',
-                });
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
 
                 return;
             }
@@ -240,23 +249,46 @@ import { MessageType } from './utils/Utils';
             const id = message.chat.getUser();
 
             if (messageType != MessageType.image) {
-                await session.sendMessage(message.chat, {
-                    conversation: `Needs to send a image`,
-                });
+                await session.sendMessage(message.chat, 'Needs to send a image', MessageType.text);
 
                 return;
             }
 
             await session.setGroupImage(id, mediaBuffer);
 
-            await session.sendMessage(message.chat, {
-                conversation: `Group image has changed`,
-            });
+            await session.sendMessage(message.chat, 'Group image has changed', MessageType.text);
+        }
+
+        if (conversation.startsWith('!imageurl')) {
+            const params = conversation.split(' ');
+            const url = params[1] ?? null;
+            if (!url) {
+                await session.sendMessage(message.chat, `Invalid url`, MessageType.text);
+
+                return;
+            }
+
+            await session.sendMessage(message.chat, { url }, MessageType.image);
+        }
+
+        if (conversation.startsWith('!exists')) {
+            const params = conversation.split(' ');
+            const number = params[1] ?? null;
+            if (!number) {
+                await session.sendMessage(message.chat, `Invalid phone number`, MessageType.text);
+
+                return;
+            }
+
+            const result = await session.isOnWhatsApp(number);
+
+            await session.sendMessage(message.chat, `Number exists: *${result.exists ? 'true' : 'false'}*\nNumber: *${result.jid ? result.jid : 'N/A'}*`, MessageType.text);
         }
 
         if (conversation == '!buttons') {
-            await session.sendMessage(message.chat, {
-                buttonsMessage: {
+            await session.sendMessage(
+                message.chat,
+                {
                     headerType: 1,
                     contentText: 'Hello',
                     footerText: 'Hi',
@@ -277,7 +309,24 @@ import { MessageType } from './utils/Utils';
                         },
                     ],
                 },
-            });
+                MessageType.buttonsMessage,
+            );
+        }
+
+        if (conversation == '!list') {
+            const rows = [
+                { title: 'Row 1', description: "Hello it's description 1", rowId: 'rowid1' },
+                { title: 'Row 2', description: "Hello it's description 2", rowId: 'rowid2' },
+            ];
+
+            const sections = [{ title: 'Section 1', rows: rows }];
+            const button = {
+                buttonText: 'Click Me!',
+                description: "Hello it's list message",
+                sections: sections,
+            };
+
+            await session.sendMessage(message.chat, button, MessageType.listMessage);
         }
     });
 

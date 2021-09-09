@@ -3,6 +3,7 @@ import { WapNode } from "../proto/WapNode";
 import { randomHex } from "./HexHelper";
 import got, { Options, Response } from 'got'
 import { URL } from 'url'
+import sharp from 'sharp';
 
 const crypto = Crypto.webcrypto as any;
 export const WS_URL = "wss://web.whatsapp.com/ws/chat";
@@ -18,6 +19,13 @@ import { Binary } from './../proto/Binary';
 import { WapJid } from "../proto/WapJid";
 import { extractWithSaltAndExpand } from './HKDF';
 import { Readable, Transform } from "stream";
+import { MessageOptions, WAMediaUpload } from "./Constants";
+import {createReadStream, createWriteStream, promises as fs, WriteStream} from 'fs'
+import { join } from "path";
+import { tmpdir } from "os";
+import { IAudioMetadata } from "music-metadata";
+import { exec } from "child_process";
+import { once } from 'events'
 
 export const DICTIONARY_3_TOKEN = ["contact_blacklist", "Asia/Jakarta", "media.fepa10-1.fna.whatsapp.net", "media.fmex10-3.fna.whatsapp.net", "disorder_prefetching_start_when_empty", "America/Bogota", "use_local_probing_rx_bitrate", "America/Argentina/Buenos_Aires", "cross_post", "media.fabb1-1.fna.whatsapp.net", "media.fbog4-2.fna.whatsapp.net", "media.fcgk9-1.fna.whatsapp.net", "media.fcmn2-1.fna.whatsapp.net", "media.fdel3-1.fna.whatsapp.net", "media.ffjr1-1.fna.whatsapp.net", "media.fgdl5-1.fna.whatsapp.net", "media.flpb1-2.fna.whatsapp.net", "media.fmex2-1.fna.whatsapp.net", "media.frba2-2.fna.whatsapp.net", "media.fros2-2.fna.whatsapp.net", "media.fruh2-1.fna.whatsapp.net", "media.fybz2-2.fna.whatsapp.net", "options", "20", "a", "017", "018", "mute_always", "user_notice", "Asia/Kolkata", "gif_provider", "locked", "media-gua1-1.cdn.whatsapp.net", "piggyback_exclude_force_flush", "24", "media.frec39-1.fna.whatsapp.net", "user_remove", "file_max_size", "cond_packet_loss_pct_ema_alpha", "media.facc1-1.fna.whatsapp.net", "media.fadb2-1.fna.whatsapp.net", "media.faly3-1.fna.whatsapp.net", "media.fbdo6-2.fna.whatsapp.net", "media.fcmn2-2.fna.whatsapp.net", "media.fctg1-3.fna.whatsapp.net", "media.ffez1-2.fna.whatsapp.net", "media.fist1-3.fna.whatsapp.net", "media.fist2-2.fna.whatsapp.net", "media.flim2-2.fna.whatsapp.net", "media.fmct2-3.fna.whatsapp.net", "media.fpei3-1.fna.whatsapp.net", "media.frba3-1.fna.whatsapp.net", "media.fsdu8-2.fna.whatsapp.net", "media.fstu2-1.fna.whatsapp.net", "media_type", "receipt_agg", "016", "enable_pli_for_crc_mismatch", "live", "enc_rekey", "frskmsg", "d", "media.fdel11-2.fna.whatsapp.net", "proto", "2250", "audio_piggyback_enable_cache", "skip_nack_if_ltrp_sent", "mark_dtx_jb_frames", "web_service_delay", "7282", "catalog_send_all", "outgoing", "360", "30", "LIMITED", "019", "audio_picker", "bpv2_phase", "media.fada1-7.fna.whatsapp.net", "media.faep7-1.fna.whatsapp.net", "media.fbko1-2.fna.whatsapp.net", "media.fbni1-2.fna.whatsapp.net", "media.fbtz1-1.fna.whatsapp.net", "media.fbtz1-8.fna.whatsapp.net", "media.fcjs3-1.fna.whatsapp.net", "media.fesb3-2.fna.whatsapp.net", "media.fgdl5-4.fna.whatsapp.net", "media.fist2-1.fna.whatsapp.net", "media.flhe2-2.fna.whatsapp.net", "media.flim2-1.fna.whatsapp.net", "media.fmex1-1.fna.whatsapp.net", "media.fpat3-2.fna.whatsapp.net", "media.fpat3-3.fna.whatsapp.net", "media.fros2-1.fna.whatsapp.net", "media.fsdu8-1.fna.whatsapp.net", "media.fsub3-2.fna.whatsapp.net", "payments_chat_plugin", "cond_congestion_no_rtcp_thr", "green_alert", "not-a-biz", "..", "shops_pdp_urls_config", "source", "media-dus1-1.cdn.whatsapp.net", "mute_video", "01b", "currency", "max_keys", "resume_check", "contact_array", "qr_scanning", "23", "b", "media.fbfh15-1.fna.whatsapp.net", "media.flim22-1.fna.whatsapp.net", "media.fsdu11-1.fna.whatsapp.net", "media.fsdu15-1.fna.whatsapp.net", "Chrome", "fts_version", "60", "media.fada1-6.fna.whatsapp.net", "media.faep4-2.fna.whatsapp.net", "media.fbaq5-1.fna.whatsapp.net", "media.fbni1-1.fna.whatsapp.net", "media.fcai3-2.fna.whatsapp.net", "media.fdel3-2.fna.whatsapp.net", "media.fdmm3-2.fna.whatsapp.net", "media.fhex3-1.fna.whatsapp.net", "media.fisb4-2.fna.whatsapp.net", "media.fkhi5-2.fna.whatsapp.net", "media.flos2-1.fna.whatsapp.net", "media.fmct2-1.fna.whatsapp.net", "media.fntr7-1.fna.whatsapp.net", "media.frak3-1.fna.whatsapp.net", "media.fruh5-2.fna.whatsapp.net", "media.fsub6-1.fna.whatsapp.net", "media.fuab1-2.fna.whatsapp.net", "media.fuio1-1.fna.whatsapp.net", "media.fver1-1.fna.whatsapp.net", "media.fymy1-1.fna.whatsapp.net", "product_catalog", "1380", "audio_oob_fec_max_pkts", "22", "254", "media-ort2-2.cdn.whatsapp.net", "media-sjc3-1.cdn.whatsapp.net", "1600", "01a", "01c", "405", "key_frame_interval", "body", "media.fcgh20-1.fna.whatsapp.net", "media.fesb10-2.fna.whatsapp.net", "125", "2000", "media.fbsb1-1.fna.whatsapp.net", "media.fcmn3-2.fna.whatsapp.net", "media.fcpq1-1.fna.whatsapp.net", "media.fdel1-2.fna.whatsapp.net", "media.ffor2-1.fna.whatsapp.net", "media.fgdl1-4.fna.whatsapp.net", "media.fhex2-1.fna.whatsapp.net", "media.fist1-2.fna.whatsapp.net", "media.fjed5-2.fna.whatsapp.net", "media.flim6-4.fna.whatsapp.net", "media.flos2-2.fna.whatsapp.net", "media.fntr6-2.fna.whatsapp.net", "media.fpku3-2.fna.whatsapp.net", "media.fros8-1.fna.whatsapp.net", "media.fymy1-2.fna.whatsapp.net", "ul_bw", "ltrp_qp_offset", "request", "nack", "dtx_delay_state_reset", "timeoffline", "28", "01f", "32", "enable_ltr_pool", "wa_msys_crypto", "01d", "58", "dtx_freeze_hg_update", "nack_if_rpsi_throttled", "253", "840", "media.famd15-1.fna.whatsapp.net", "media.fbog17-2.fna.whatsapp.net", "media.fcai19-2.fna.whatsapp.net", "media.fcai21-4.fna.whatsapp.net", "media.fesb10-4.fna.whatsapp.net", "media.fesb10-5.fna.whatsapp.net", "media.fmaa12-1.fna.whatsapp.net", "media.fmex11-3.fna.whatsapp.net", "media.fpoa33-1.fna.whatsapp.net", "1050", "021", "clean", "cond_range_ema_packet_loss_pct", "media.fadb6-5.fna.whatsapp.net", "media.faqp4-1.fna.whatsapp.net", "media.fbaq3-1.fna.whatsapp.net", "media.fbel2-1.fna.whatsapp.net", "media.fblr4-2.fna.whatsapp.net", "media.fclo8-1.fna.whatsapp.net", "media.fcoo1-2.fna.whatsapp.net", "media.ffjr1-4.fna.whatsapp.net", "media.ffor9-1.fna.whatsapp.net", "media.fisb3-1.fna.whatsapp.net", "media.fkhi2-2.fna.whatsapp.net", "media.fkhi4-1.fna.whatsapp.net", "media.fpbc1-2.fna.whatsapp.net", "media.fruh2-2.fna.whatsapp.net", "media.fruh5-1.fna.whatsapp.net", "media.fsub3-1.fna.whatsapp.net", "payments_transaction_limit", "252", "27", "29", "tintagel", "01e", "237", "780", "callee_updated_payload", "020", "257", "price", "025", "239", "payments_cs_phone_number", "mediaretry", "w:auth:backup:token", "Glass.caf", "max_bitrate", "240", "251", "660", "media.fbog16-1.fna.whatsapp.net", "media.fcgh21-1.fna.whatsapp.net", "media.fkul19-2.fna.whatsapp.net", "media.flim21-2.fna.whatsapp.net", "media.fmex10-4.fna.whatsapp.net", "64", "33", "34", "35", "interruption", "media.fabv3-1.fna.whatsapp.net", "media.fadb6-1.fna.whatsapp.net", "media.fagr1-1.fna.whatsapp.net", "media.famd1-1.fna.whatsapp.net", "media.famm6-1.fna.whatsapp.net", "media.faqp2-3.fna.whatsapp.net"];
 export const DICTIONARIES = [DICTIONARY_0_TOKEN, DICTIONARY_1_TOKEN, DICTIONARY_2_TOKEN, DICTIONARY_3_TOKEN];
@@ -282,6 +290,8 @@ export enum MessageType {
   location = 'locationMessage',
   liveLocation = 'liveLocationMessage',
   protocolMessage = 'protocolMessage',
+  listMessage = 'listMessage',
+  buttonsMessage = 'buttonsMessage',
   historySync = 'historySync',
   appState = 'appState',
 
@@ -313,9 +323,9 @@ export const getMediaKeys = async (buffer: any, type: string) => {
   const expandedMediaKey = await extractWithSaltAndExpand(buffer, Buffer.alloc(32), HKDFInfoKeys[type], 112);
   
   return {
-      iv: expandedMediaKey.slice(0, 16),
-      cipherKey: expandedMediaKey.slice(16, 48),
-      macKey: expandedMediaKey.slice(48, 80),
+      iv: Buffer.from(expandedMediaKey.slice(0, 16)),
+      cipherKey: Buffer.from(expandedMediaKey.slice(16, 48)),
+      macKey: Buffer.from(expandedMediaKey.slice(48, 80)),
   }
 }
 
@@ -355,6 +365,141 @@ export const downloadAndDecrypt = async (url: string, mediaKey: Uint8Array, type
 
   return fetched.pipe(output, { end: true });
 }
+
+export const toReadable = (buffer: Buffer) => {
+  const readable = new Readable({ read: () => {} })
+  readable.push(buffer)
+  readable.push(null)
+  return readable
+}
+
+export const getStream = async (item: WAMediaUpload) => {
+  if(Buffer.isBuffer(item)) return { stream: toReadable(item), type: 'buffer' }
+  if(item.url.toString().startsWith('http://') || item.url.toString().startsWith('https://')) {
+      return { stream: await getGotStream(item.url), type: 'remote' }
+  }
+  return { stream: createReadStream(item.url), type: 'file' }
+}
+
+export const encryptedStream = async(media: WAMediaUpload, mediaType: MessageType, saveOriginalFileIfRequired = true) => {
+  const { stream, type } = await getStream(media)
+
+  const mediaKey = randomBytes(32)
+  const {cipherKey, iv, macKey} = await getMediaKeys(mediaKey, mediaType)
+  console.log('mediaKey', mediaKey);
+  console.log('cipherKey', cipherKey);
+  console.log('iv', iv);
+  console.log('iv', macKey);
+
+  // random name
+  const encBodyPath = join(tmpdir(), mediaType + generateMessageID() + '.enc')
+
+  const encWriteStream = createWriteStream(encBodyPath)
+  let bodyPath: string
+  let writeStream: WriteStream
+  if(type === 'file') {
+      bodyPath = (media as any).url
+  } else if(saveOriginalFileIfRequired) {
+      bodyPath = join(tmpdir(), mediaType + generateMessageID())
+      writeStream = createWriteStream(bodyPath)
+  }
+  
+  let fileLength = 0
+  const aes = Crypto.createCipheriv('aes-256-cbc', cipherKey, iv)
+  let hmac = Crypto.createHmac('sha256', macKey).update(iv)
+  let sha256Plain = Crypto.createHash('sha256')
+  let sha256Enc = Crypto.createHash('sha256')
+
+  const onChunk = (buff: Buffer) => {
+      sha256Enc = sha256Enc.update(buff)
+      hmac = hmac.update(buff)
+      encWriteStream.write(buff)
+  }
+  for await(const data of stream) {
+      fileLength += data.length
+      sha256Plain = sha256Plain.update(data)
+      if (writeStream && !writeStream.write(data)) await once(writeStream, 'drain') 
+      onChunk(aes.update(data))
+  }
+  onChunk(aes.final())
+
+  const mac = hmac.digest().slice(0, 10)
+  sha256Enc = sha256Enc.update(mac)
+  
+  const fileSha256 = sha256Plain.digest()
+  const fileEncSha256 = sha256Enc.digest()
+  
+  encWriteStream.write(mac)
+  encWriteStream.end()
+
+  writeStream && writeStream.end()
+
+  return {
+      mediaKey,
+      encBodyPath,
+      bodyPath,
+      mac,
+      fileEncSha256,
+      fileSha256,
+      fileLength,
+      didSaveToTmpPath: type !== 'file'
+  }
+}
+
+export async function getAudioDuration (buffer: Buffer | string) {
+  const musicMetadata = await import ('music-metadata')
+  let metadata: IAudioMetadata
+  if(Buffer.isBuffer(buffer)) {
+      metadata = await musicMetadata.parseBuffer(buffer, null, { duration: true })
+  } else {
+      const rStream = createReadStream(buffer)
+      metadata = await musicMetadata.parseStream(rStream, null, { duration: true })
+      rStream.close()
+  }
+  return metadata.format.duration;
+}
+
+export async function generateThumbnail(file: string, mediaType: MessageType, info: MessageOptions) {
+  if ('thumbnail' in info) {
+      // don't do anything if the thumbnail is already provided, or is null
+      if (mediaType === MessageType.audio) {
+          throw new Error('audio messages cannot have thumbnails')
+      }
+  } else if (mediaType === MessageType.image) {
+      const buff = await compressImage(file)
+      info.thumbnail = buff.toString('base64')
+  } else if (mediaType === MessageType.video) {
+      const imgFilename = join(tmpdir(), generateMessageID() + '.jpg')
+      try {
+          await extractVideoThumb(file, imgFilename, '00:00:00', { width: 48, height: 48 })
+          const buff = await fs.readFile(imgFilename)
+          info.thumbnail = buff.toString('base64')
+          await fs.unlink(imgFilename)
+      } catch (err) {
+          console.log('could not generate video thumb: ' + err)
+      }
+  }
+}
+
+const extractVideoThumb = async (
+  path: string,
+  destPath: string,
+  time: string,
+  size: { width: number; height: number },
+) =>
+  new Promise((resolve, reject) => {
+      const cmd = `ffmpeg -ss ${time} -i ${path} -y -s ${size.width}x${size.height} -vframes 1 -f image2 ${destPath}`
+      exec(cmd, (err) => {
+          if (err) reject(err)
+          else resolve()
+      })
+  }) as Promise<void>
+
+export const compressImage = async (bufferOrFilePath: Buffer | string) => {
+  return sharp(bufferOrFilePath).resize(48, 48).jpeg({ quality: 50, progressive: true }).toBuffer();
+}
+
+export const unixTimestampSeconds = (date: Date = new Date()) => Math.floor(date.getTime()/1000)
 
 export function wapBytes(e, t, r) {
   var a = null;

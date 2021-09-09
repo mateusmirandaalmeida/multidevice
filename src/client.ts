@@ -15,6 +15,11 @@ import {
     USER_JID_SUFFIX,
     wapBytes,
     MessageType,
+    encryptedStream,
+    generateThumbnail,
+    getAudioDuration,
+    DEFAULT_ORIGIN,
+    unixTimestampSeconds,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -29,7 +34,7 @@ import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
 import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
-import { proto, proto as WAProto } from './proto/WAMessage';
+import { proto as WAProto } from './proto/WAMessage';
 
 import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';
@@ -43,6 +48,27 @@ import { EventEmitter } from 'stream';
 import { EventHandlerService } from './services/EventHandlerService';
 import { IMediaConn } from './interfaces/IMediaConn';
 import { inflate } from 'zlib';
+import {
+    WAContactMessage,
+    WAContactsArrayMessage,
+    WAGroupInviteMessage,
+    WALocationMessage,
+    WAMediaUpload,
+    WATextMessage,
+    MessageOptions,
+    WAMessageType,
+    WAMessageContent,
+    MimetypeMap,
+    Mimetype,
+    MessageTypeProto,
+    MediaPathMap,
+} from './utils/Constants';
+import { createReadStream } from 'fs';
+import got, { Method } from 'got';
+import { Agent } from 'https';
+import { promises as fs } from 'fs';
+import sharp from 'sharp';
+import { decode } from 'punycode';
 
 const sessions = {};
 
@@ -549,7 +575,244 @@ export class WaClient extends EventEmitter {
         await this.waSignal.createSignalSession(user, device);
     }
 
-    public async sendMessageGroup(jid: string | WapJid, message: WAProto.IMessage) {
+    public async sendMessage(id: string | WapJid, message: WAMessageType, type: MessageType, options: MessageOptions = {}) {
+        const waMessage = await this.prepareMessage(message, type, options);
+        await this.sendMessageInternal(id, waMessage);
+        return waMessage;
+    }
+
+    // baileys
+    public async prepareMessage(message: WAMessageType, type: MessageType, options: MessageOptions = {}) {
+        const content = await this.prepareMessageContent(message, type, options);
+
+        const preparedMessage = this.prepareMessageFromContent(content, options);
+        return preparedMessage;
+    }
+
+    // baileys
+    public prepareMessageFromContent(message: WAMessageContent, options: MessageOptions) {
+        if (!options.timestamp) options.timestamp = new Date(); // set timestamp to now
+        if (typeof options.sendEphemeral === 'undefined') options.sendEphemeral = 'chat';
+        // prevent an annoying bug (WA doesn't accept sending messages with '@c.us')
+        //id = whatsappID (id)
+
+        const key = Object.keys(message)[0];
+        const timestamp = unixTimestampSeconds(options.timestamp);
+        //const quoted = options.quoted
+
+        if (options.contextInfo) message[key].contextInfo = options.contextInfo;
+
+        /*if (quoted) {
+            const participant = quoted.key.fromMe ? this.user.jid : (quoted.participant || quoted.key.participant || quoted.key.remoteJid)
+
+            message[key].contextInfo = message[key].contextInfo || { }
+            message[key].contextInfo.participant = participant
+            message[key].contextInfo.stanzaId = quoted.key.id
+            message[key].contextInfo.quotedMessage = quoted.message
+            
+            // if a participant is quoted, then it must be a group
+            // hence, remoteJid of group must also be entered
+            if (quoted.key.participant) {
+                message[key].contextInfo.remoteJid = quoted.key.remoteJid
+            }
+        }*/
+
+        if (options?.thumbnail) {
+            message[key].jpegThumbnail = Buffer.from(options.thumbnail, 'base64');
+        }
+
+        /*const chat = this.chats.get(id)
+        if (
+            // if we want to send a disappearing message
+            ((options?.sendEphemeral === 'chat' && chat?.ephemeral) || 
+            options?.sendEphemeral === true) &&
+            // and it's not a protocol message -- delete, toggle disappear message
+            key !== 'protocolMessage' &&
+            // already not converted to disappearing message
+            key !== 'ephemeralMessage' 
+        ) {
+            message[key].contextInfo = {
+                ...(message[key].contextInfo || {}),
+                expiration: chat?.ephemeral || WA_DEFAULT_EPHEMERAL,
+                ephemeralSettingTimestamp: chat?.eph_setting_ts
+            }
+            message = {
+                ephemeralMessage: {
+                    message
+                }
+            }
+        } */
+
+        message = WAProto.Message.fromObject(message);
+
+        /*const messageJSON = {
+            key: {
+                remoteJid: id,
+                fromMe: true,
+                id: options?.messageId || generateMessageID(),
+            },
+            message: message,
+            messageTimestamp: timestamp,
+            messageStubParameters: [],
+            participant: id.includes('@g.us') ? this.user.jid : null,
+            status: WA_MESSAGE_STATUS_TYPE.PENDING
+        }
+        return WAMessageProto.WebMessageInfo.fromObject (messageJSON)*/
+
+        return message;
+    }
+
+    // baileys
+    public async prepareMessageContent(message: WAMessageType, type: MessageType, options: MessageOptions) {
+        let m: WAMessageContent = {};
+        switch (type) {
+            case MessageType.text:
+            case MessageType.extendedText:
+                if (typeof message === 'string') message = { text: message } as WATextMessage;
+
+                if ('text' in message) {
+                    /*if (options.detectLinks !== false && message.text.match(URL_REGEX)) {
+                        try {
+                            message = await this.generateLinkPreview (message.text)
+                        } catch (error) { // ignore if fails
+                            this.logger.trace(`failed to generate link preview for message '${message.text}': ${error}`)
+                        } 
+                    }*/
+                    m.extendedTextMessage = WAProto.ExtendedTextMessage.fromObject(message as any);
+                } else {
+                    throw new Error("message needs to be a string or object with property 'text'");
+                }
+                break;
+            case MessageType.location:
+            case MessageType.liveLocation:
+                m.locationMessage = WAProto.LocationMessage.fromObject(message as any);
+                break;
+            case MessageType.contact:
+                m.contactMessage = WAProto.ContactMessage.fromObject(message as any);
+                break;
+            case MessageType.contactsArray:
+                m.contactsArrayMessage = WAProto.ContactsArrayMessage.fromObject(message as any);
+                break;
+            case MessageType.groupInviteMessage:
+                m.groupInviteMessage = WAProto.GroupInviteMessage.fromObject(message as any);
+                break;
+            case MessageType.listMessage:
+                m.listMessage = WAProto.ListMessage.fromObject(message as any);
+                break;
+            case MessageType.buttonsMessage:
+                m.buttonsMessage = WAProto.ButtonsMessage.fromObject(message as any);
+                break;
+            case MessageType.image:
+            case MessageType.sticker:
+            case MessageType.document:
+            case MessageType.video:
+            case MessageType.audio:
+                m = await this.prepareMessageMedia(message as Buffer, type, options);
+                break;
+        }
+
+        return WAProto.Message.fromObject(m);
+    }
+
+    // baileys
+    protected async fetchRequest(endpoint: string, method: Method = 'GET', body?: any, agent?: Agent, headers?: { [k: string]: string }, followRedirect = true) {
+        return got(endpoint, {
+            method,
+            body,
+            followRedirect,
+            headers: { Origin: DEFAULT_ORIGIN, ...(headers || {}) },
+            agent: { https: agent /*|| this.connectOptions.fetchAgent*/ },
+        });
+    }
+
+    // baileys
+    async prepareMessageMedia(media: WAMediaUpload, mediaType: MessageType, options: MessageOptions = {}) {
+        if (mediaType === MessageType.document && !options.mimetype) {
+            throw new Error('mimetype required to send a document');
+        }
+
+        if (mediaType === MessageType.sticker && options.caption) {
+            throw new Error('cannot send a caption with a sticker');
+        }
+
+        if (!options.mimetype) {
+            options.mimetype = MimetypeMap[mediaType];
+        }
+
+        let isGIF = false;
+        if (options.mimetype === Mimetype.gif) {
+            isGIF = true;
+            options.mimetype = MimetypeMap[MessageType.video];
+        }
+
+        const requiresDurationComputation = mediaType === MessageType.audio && !options.duration;
+        const requiresThumbnailComputation = (mediaType === MessageType.image || mediaType === MessageType.video) && !('thumbnail' in options);
+        const requiresOriginalForSomeProcessing = requiresDurationComputation || requiresThumbnailComputation;
+
+        const { mediaKey, encBodyPath, bodyPath, fileEncSha256, fileSha256, fileLength, didSaveToTmpPath } = await encryptedStream(media, mediaType, requiresOriginalForSomeProcessing);
+
+        // url safe Base64 encode the SHA256 hash of the body
+        const fileEncSha256B64 = encodeURIComponent(fileEncSha256.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/\=+$/, ''));
+
+        if (requiresThumbnailComputation) {
+            await generateThumbnail(bodyPath, mediaType, options);
+        }
+
+        if (requiresDurationComputation) {
+            try {
+                options.duration = await getAudioDuration(bodyPath);
+            } catch (error) {
+                this.log('failed to obtain audio duration: ' + error.message);
+            }
+        }
+
+        // send a query JSON to obtain the url & auth token to upload our media
+        let json = await this.refreshMediaConn(options.forceNewMediaOptions);
+
+        let mediaUrl: string;
+        for (let host of json.hosts) {
+            const auth = encodeURIComponent(json.auth); // the auth token
+            const url = `https://${host}${MediaPathMap[mediaType]}/${fileEncSha256B64}?auth=${auth}&token=${fileEncSha256B64}`;
+
+            try {
+                const { body: responseText } = await this.fetchRequest(url, 'POST', createReadStream(encBodyPath), options.uploadAgent, { 'Content-Type': 'application/octet-stream' });
+                const result = JSON.parse(responseText);
+                mediaUrl = result?.url;
+
+                if (mediaUrl) break;
+                else {
+                    json = await this.refreshMediaConn(true);
+                    throw new Error(`upload failed, reason: ${JSON.stringify(result)}`);
+                }
+            } catch (error) {
+                const isLast = host === json.hosts[json.hosts.length - 1];
+                this.log(`Error in uploading to ${host} (${error}) ${isLast ? '' : ', retrying...'}`);
+            }
+        }
+        if (!mediaUrl) throw new Error('Media upload failed on all hosts');
+        // remove tmp files
+        await Promise.all([fs.unlink(encBodyPath), didSaveToTmpPath && bodyPath && fs.unlink(bodyPath)].filter(Boolean));
+
+        const message = {
+            [mediaType]: MessageTypeProto[mediaType].fromObject({
+                url: mediaUrl,
+                mediaKey: mediaKey,
+                mimetype: options.mimetype,
+                fileEncSha256: fileEncSha256,
+                fileSha256: fileSha256,
+                fileLength: fileLength,
+                seconds: options.duration,
+                fileName: options.filename || 'file',
+                gifPlayback: isGIF || undefined,
+                caption: options.caption,
+                ptt: options.ptt,
+            }),
+        };
+
+        return WAProto.Message.fromObject(message); // as WAMessageContent
+    }
+
+    public async sendMessageGroupInternal(jid: string | WapJid, message: WAProto.IMessage) {
         const phone = typeof jid == 'string' ? jid : jid.getUser();
 
         const encodedMessage = new Binary(WAProto.Message.encode(message).finish());
@@ -608,9 +871,9 @@ export class WaClient extends EventEmitter {
         } catch (e) {}
     }
 
-    public async sendMessage(jid: string | WapJid, message: WAProto.IMessage) {
+    public async sendMessageInternal(jid: string | WapJid, message: WAProto.IMessage) {
         if ((typeof jid == 'string' && isGroupID(jid)) || (jid instanceof WapJid && jid.isGroup())) {
-            return this.sendMessageGroup(jid, message);
+            return this.sendMessageGroupInternal(jid, message);
         }
 
         // return
@@ -702,6 +965,60 @@ export class WaClient extends EventEmitter {
             return null;
         }
     };
+
+    public async isOnWhatsApp(jid: string) {
+        const contact = `+${jid}@c.us`;
+
+        const iq = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: S_WHATSAPP_NET,
+                type: 'get',
+                xmlns: 'usync',
+            },
+            [
+                new WapNode(
+                    'usync',
+                    {
+                        sid: generateId(),
+                        mode: 'query',
+                        last: 'true',
+                        index: '0',
+                        context: 'interactive',
+                    },
+                    [
+                        new WapNode(
+                            'query',
+                            {},
+                            [new WapNode('contact'), new WapNode('business', {}, [new WapNode('verified_name')])],
+                        ),
+                        new WapNode('list', {}, [new WapNode('user', {}, [new WapNode('contact', {}, contact)])]),
+                    ],
+                ),
+            ],
+        );
+
+        const resultFrame = await this.sendMessageAndWait(iq);
+
+        const userNode = resultFrame.child('usync')?.child('list').child('user') ?? null;
+        const contactNode = userNode.child('contact');
+        const business = userNode.maybeChild('business');
+
+        if (contactNode.attrs.type == 'out') {
+            return {
+                exists: false,
+                jid: null,
+                business: false
+            };
+        }
+
+        return {
+            exists: true,
+            jid: userNode.attrs.jid.getUser(),
+            business: !!business
+        };
+    }
 
     protected getUSyncDevices = async (jids: WapJid[], ignoreZeroDevice = true): Promise<any> => {
         const users = jids.map((jid) => {
@@ -904,6 +1221,9 @@ export class WaClient extends EventEmitter {
     }
 
     async setGroupImage(groupPhone: string, image: Uint8Array) {
+        // needs change to jpg 512x512
+        const buffer = await sharp(image).resize(512, 512).jpeg({ quality: 50, progressive: true }).toBuffer();
+
         const stanza = new WapNode(
             'iq',
             {
@@ -912,9 +1232,11 @@ export class WaClient extends EventEmitter {
                 type: 'set',
                 xmlns: 'w:profile:picture',
             },
-            [new WapNode('picture', { type: 'image' }, image)],
+            [new WapNode('picture', { type: 'image' }, new Uint8Array(buffer))],
         );
-        await this.sendMessageAndWait(stanza);
+
+        const result = await this.sendMessageAndWait(stanza);
+        console.dir(result, { depth: null });
     }
 
     async leaveGroup(groupPhone: string) {
@@ -1111,7 +1433,7 @@ export class WaClient extends EventEmitter {
         return this.downloadMediaMessage('buffer', content.url, content.mediaKey, type);
     }
 
-    private async downloadMediaMessage (type: string, url: string, mediaKey: Uint8Array, messageType: MessageType) {
+    private async downloadMediaMessage(type: string, url: string, mediaKey: Uint8Array, messageType: MessageType) {
         const stream = await downloadAndDecrypt(url, mediaKey, messageType);
         if (type === 'buffer') {
             let buffer = Buffer.from([]);
@@ -1121,8 +1443,7 @@ export class WaClient extends EventEmitter {
             return buffer;
         }
         return stream;
-    };
-
+    }
 
     private async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
         const mediaConn = await this.refreshMediaConn(forceGet);
