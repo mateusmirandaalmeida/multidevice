@@ -42,11 +42,17 @@ export class MessageHandler extends Handler {
                             await this.waSignal.processSenderKeyDistributionMessage(msgInfo.chat, msgInfo.author, messageProto.senderKeyDistributionMessage);
                         }
 
+                        if (messageProto.protocolMessage) {
+                            await this.client.processProtocolMessage(node, msgInfo, messageProto);
+                            return;
+                        }
+
                         this.client.emit('message', {
                             ...msgInfo,
                             ...messageProto,
                         });
-                        this.client.afterMessageDecrypt(node);
+                        
+                        await this.client.afterMessageDecrypt(node);
                     } catch (e) {
                         await this.client.sendRetryReceipt(node);
                     }

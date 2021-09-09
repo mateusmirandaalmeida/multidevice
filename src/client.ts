@@ -7,17 +7,24 @@ import {
     KEY_BUNDLE_TYPE,
     xmppPreKey,
     xmppSignedPreKey,
-    MESSAGE_TYPE,
     writeRandomPadMax16,
-    unpadRandomMax16,
     phashV2,
     generateMessageID,
     isGroupID,
+    downloadAndDecrypt,
+    USER_JID_SUFFIX,
+    wapBytes,
+    MessageType,
+    encryptedStream,
+    generateThumbnail,
+    getAudioDuration,
+    DEFAULT_ORIGIN,
+    unixTimestampSeconds,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
 import { NoiseHandshake } from './socket/NoiseHandshake';
-import { toLowerCaseHex } from './utils/HexHelper';
+import { toLowerCaseHex, randomHex } from './utils/HexHelper';
 
 import { generatePayloadRegister } from './payloads/RegisterPayload';
 import { Binary } from './proto/Binary';
@@ -25,7 +32,7 @@ import { encodeStanza, generateId, decodeStanza, unpackStanza } from './proto/St
 import { generateIdentityKeyPair, generateRegistrationId, generateSignedPreKey, KeyPair, sharedKey, SignedKeyPair } from './utils/Curve';
 import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
-import { S_WHATSAPP_NET, WapJid } from './proto/WapJid';
+import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
 import { proto as WAProto } from './proto/WAMessage';
 
@@ -35,13 +42,28 @@ import { StorageSignal } from './signal/StorageSignal';
 import { WaSignal } from './signal/Signal';
 import { Wid } from './proto/Wid';
 
-import * as Crypto from 'crypto';
 import { deviceParser, e2eSessionParser } from './proto/ProtoParsers';
 
 import { EventEmitter } from 'stream';
 import { EventHandlerService } from './services/EventHandlerService';
-
-const crypto = Crypto.webcrypto as any;
+import { IMediaConn } from './interfaces/IMediaConn';
+import { inflate } from 'zlib';
+import {
+    WAMediaUpload,
+    WATextMessage,
+    MessageOptions,
+    WAMessageType,
+    WAMessageContent,
+    MimetypeMap,
+    Mimetype,
+    MessageTypeProto,
+    MediaPathMap,
+} from './utils/Constants';
+import { createReadStream } from 'fs';
+import got, { Method } from 'got';
+import { Agent } from 'https';
+import { promises as fs } from 'fs';
+import sharp from 'sharp';
 
 const sessions = {};
 
@@ -69,6 +91,8 @@ export class WaClient extends EventEmitter {
     private me: WapJid;
     private socketConn: NoiseSocket;
     private enableLog: boolean;
+
+    private mediaConn: IMediaConn;
 
     private registrationId: number;
 
@@ -353,30 +377,25 @@ export class WaClient extends EventEmitter {
 
     public async afterMessageDecrypt(node: WapNode) {
         const isGroup = !!node.attrs.participant;
-        const isMe = isGroup
-      ? node.attrs.participant.getUser() == this.me.getUser()
-      : node.attrs.from.getUser() == this.me.getUser();
-        this.sendMessageAck(node)
+        const isMe = isGroup ? node.attrs.participant.getUser() == this.me.getUser() : node.attrs.from.getUser() == this.me.getUser();
+        this.sendMessageAck(node);
         isMe ? this.sendMessageSender(node) : this.sendMessageInactive(node);
     }
 
     public async sendMessageSender(node: WapNode) {
         const isGroup = !!node.attrs.participant;
         const stanza = new WapNode(
-          'receipt',
-          {
-            type: 'sender',
-            id: node.attrs.id,
-            ...(isGroup
-              ? { participant: node.attrs.participant }
-              : { recipient: node.attrs.recipient }),
-            to: node.attrs.from,
-          },
-          null,
+            'receipt',
+            {
+                type: 'sender',
+                id: node.attrs.id,
+                ...(isGroup ? { participant: node.attrs.participant } : { recipient: node.attrs.recipient }),
+                to: node.attrs.from,
+            },
+            null,
         );
         this.onlySendFrame(stanza);
-      }
-    
+    }
 
     public async sendMessageInactive(node: WapNode) {
         const isGroup = !!node.attrs.participant;
@@ -481,6 +500,11 @@ export class WaClient extends EventEmitter {
         const tag = stanza.tag;
         this.log('received tag node', tag);
 
+        if (tag == 'xmlstreamend') {
+            this.socketConn.restart();
+            return;
+        }
+
         if (stanza.attrs && stanza.attrs.id && this.socketWaitIqs[stanza.attrs.id]) {
             this.socketWaitIqs[stanza.attrs.id].resolve(stanza);
             delete this.socketWaitIqs[stanza.attrs.id];
@@ -546,7 +570,244 @@ export class WaClient extends EventEmitter {
         await this.waSignal.createSignalSession(user, device);
     }
 
-    public async sendMessageGroup(jid: string | WapJid, message: WAProto.IMessage) {
+    public async sendMessage(id: string | WapJid, message: WAMessageType, type: MessageType, options: MessageOptions = {}) {
+        const waMessage = await this.prepareMessage(message, type, options);
+        await this.sendMessageInternal(id, waMessage);
+        return waMessage;
+    }
+
+    // baileys
+    public async prepareMessage(message: WAMessageType, type: MessageType, options: MessageOptions = {}) {
+        const content = await this.prepareMessageContent(message, type, options);
+
+        const preparedMessage = this.prepareMessageFromContent(content, options);
+        return preparedMessage;
+    }
+
+    // baileys
+    public prepareMessageFromContent(message: WAMessageContent, options: MessageOptions) {
+        if (!options.timestamp) options.timestamp = new Date(); // set timestamp to now
+        if (typeof options.sendEphemeral === 'undefined') options.sendEphemeral = 'chat';
+        // prevent an annoying bug (WA doesn't accept sending messages with '@c.us')
+        //id = whatsappID (id)
+
+        const key = Object.keys(message)[0];
+        const timestamp = unixTimestampSeconds(options.timestamp);
+        //const quoted = options.quoted
+
+        if (options.contextInfo) message[key].contextInfo = options.contextInfo;
+
+        /*if (quoted) {
+            const participant = quoted.key.fromMe ? this.user.jid : (quoted.participant || quoted.key.participant || quoted.key.remoteJid)
+
+            message[key].contextInfo = message[key].contextInfo || { }
+            message[key].contextInfo.participant = participant
+            message[key].contextInfo.stanzaId = quoted.key.id
+            message[key].contextInfo.quotedMessage = quoted.message
+            
+            // if a participant is quoted, then it must be a group
+            // hence, remoteJid of group must also be entered
+            if (quoted.key.participant) {
+                message[key].contextInfo.remoteJid = quoted.key.remoteJid
+            }
+        }*/
+
+        if (options?.thumbnail) {
+            message[key].jpegThumbnail = Buffer.from(options.thumbnail, 'base64');
+        }
+
+        /*const chat = this.chats.get(id)
+        if (
+            // if we want to send a disappearing message
+            ((options?.sendEphemeral === 'chat' && chat?.ephemeral) || 
+            options?.sendEphemeral === true) &&
+            // and it's not a protocol message -- delete, toggle disappear message
+            key !== 'protocolMessage' &&
+            // already not converted to disappearing message
+            key !== 'ephemeralMessage' 
+        ) {
+            message[key].contextInfo = {
+                ...(message[key].contextInfo || {}),
+                expiration: chat?.ephemeral || WA_DEFAULT_EPHEMERAL,
+                ephemeralSettingTimestamp: chat?.eph_setting_ts
+            }
+            message = {
+                ephemeralMessage: {
+                    message
+                }
+            }
+        } */
+
+        message = WAProto.Message.fromObject(message);
+
+        /*const messageJSON = {
+            key: {
+                remoteJid: id,
+                fromMe: true,
+                id: options?.messageId || generateMessageID(),
+            },
+            message: message,
+            messageTimestamp: timestamp,
+            messageStubParameters: [],
+            participant: id.includes('@g.us') ? this.user.jid : null,
+            status: WA_MESSAGE_STATUS_TYPE.PENDING
+        }
+        return WAMessageProto.WebMessageInfo.fromObject (messageJSON)*/
+
+        return message;
+    }
+
+    // baileys
+    public async prepareMessageContent(message: WAMessageType, type: MessageType, options: MessageOptions) {
+        let m: WAMessageContent = {};
+        switch (type) {
+            case MessageType.text:
+            case MessageType.extendedText:
+                if (typeof message === 'string') message = { text: message } as WATextMessage;
+
+                if ('text' in message) {
+                    /*if (options.detectLinks !== false && message.text.match(URL_REGEX)) {
+                        try {
+                            message = await this.generateLinkPreview (message.text)
+                        } catch (error) { // ignore if fails
+                            this.logger.trace(`failed to generate link preview for message '${message.text}': ${error}`)
+                        } 
+                    }*/
+                    m.extendedTextMessage = WAProto.ExtendedTextMessage.fromObject(message as any);
+                } else {
+                    throw new Error("message needs to be a string or object with property 'text'");
+                }
+                break;
+            case MessageType.location:
+            case MessageType.liveLocation:
+                m.locationMessage = WAProto.LocationMessage.fromObject(message as any);
+                break;
+            case MessageType.contact:
+                m.contactMessage = WAProto.ContactMessage.fromObject(message as any);
+                break;
+            case MessageType.contactsArray:
+                m.contactsArrayMessage = WAProto.ContactsArrayMessage.fromObject(message as any);
+                break;
+            case MessageType.groupInviteMessage:
+                m.groupInviteMessage = WAProto.GroupInviteMessage.fromObject(message as any);
+                break;
+            case MessageType.listMessage:
+                m.listMessage = WAProto.ListMessage.fromObject(message as any);
+                break;
+            case MessageType.buttonsMessage:
+                m.buttonsMessage = WAProto.ButtonsMessage.fromObject(message as any);
+                break;
+            case MessageType.image:
+            case MessageType.sticker:
+            case MessageType.document:
+            case MessageType.video:
+            case MessageType.audio:
+                m = await this.prepareMessageMedia(message as Buffer, type, options);
+                break;
+        }
+
+        return WAProto.Message.fromObject(m);
+    }
+
+    // baileys
+    protected async fetchRequest(endpoint: string, method: Method = 'GET', body?: any, agent?: Agent, headers?: { [k: string]: string }, followRedirect = true) {
+        return got(endpoint, {
+            method,
+            body,
+            followRedirect,
+            headers: { Origin: DEFAULT_ORIGIN, ...(headers || {}) },
+            agent: { https: agent /*|| this.connectOptions.fetchAgent*/ },
+        });
+    }
+
+    // baileys
+    async prepareMessageMedia(media: WAMediaUpload, mediaType: MessageType, options: MessageOptions = {}) {
+        if (mediaType === MessageType.document && !options.mimetype) {
+            throw new Error('mimetype required to send a document');
+        }
+
+        if (mediaType === MessageType.sticker && options.caption) {
+            throw new Error('cannot send a caption with a sticker');
+        }
+
+        if (!options.mimetype) {
+            options.mimetype = MimetypeMap[mediaType];
+        }
+
+        let isGIF = false;
+        if (options.mimetype === Mimetype.gif) {
+            isGIF = true;
+            options.mimetype = MimetypeMap[MessageType.video];
+        }
+
+        const requiresDurationComputation = mediaType === MessageType.audio && !options.duration;
+        const requiresThumbnailComputation = (mediaType === MessageType.image || mediaType === MessageType.video) && !('thumbnail' in options);
+        const requiresOriginalForSomeProcessing = requiresDurationComputation || requiresThumbnailComputation;
+
+        const { mediaKey, encBodyPath, bodyPath, fileEncSha256, fileSha256, fileLength, didSaveToTmpPath } = await encryptedStream(media, mediaType, requiresOriginalForSomeProcessing);
+
+        // url safe Base64 encode the SHA256 hash of the body
+        const fileEncSha256B64 = encodeURIComponent(fileEncSha256.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/\=+$/, ''));
+
+        if (requiresThumbnailComputation) {
+            await generateThumbnail(bodyPath, mediaType, options);
+        }
+
+        if (requiresDurationComputation) {
+            try {
+                options.duration = await getAudioDuration(bodyPath);
+            } catch (error) {
+                this.log('failed to obtain audio duration: ' + error.message);
+            }
+        }
+
+        // send a query JSON to obtain the url & auth token to upload our media
+        let json = await this.refreshMediaConn(options.forceNewMediaOptions);
+
+        let mediaUrl: string;
+        for (let host of json.hosts) {
+            const auth = encodeURIComponent(json.auth); // the auth token
+            const url = `https://${host}${MediaPathMap[mediaType]}/${fileEncSha256B64}?auth=${auth}&token=${fileEncSha256B64}`;
+
+            try {
+                const { body: responseText } = await this.fetchRequest(url, 'POST', createReadStream(encBodyPath), options.uploadAgent, { 'Content-Type': 'application/octet-stream' });
+                const result = JSON.parse(responseText);
+                mediaUrl = result?.url;
+
+                if (mediaUrl) break;
+                else {
+                    json = await this.refreshMediaConn(true);
+                    throw new Error(`upload failed, reason: ${JSON.stringify(result)}`);
+                }
+            } catch (error) {
+                const isLast = host === json.hosts[json.hosts.length - 1];
+                this.log(`Error in uploading to ${host} (${error}) ${isLast ? '' : ', retrying...'}`);
+            }
+        }
+        if (!mediaUrl) throw new Error('Media upload failed on all hosts');
+        // remove tmp files
+        await Promise.all([fs.unlink(encBodyPath), didSaveToTmpPath && bodyPath && fs.unlink(bodyPath)].filter(Boolean));
+
+        const message = {
+            [mediaType]: MessageTypeProto[mediaType].fromObject({
+                url: mediaUrl,
+                mediaKey: mediaKey,
+                mimetype: options.mimetype,
+                fileEncSha256: fileEncSha256,
+                fileSha256: fileSha256,
+                fileLength: fileLength,
+                seconds: options.duration,
+                fileName: options.filename || 'file',
+                gifPlayback: isGIF || undefined,
+                caption: options.caption,
+                ptt: options.ptt,
+            }),
+        };
+
+        return WAProto.Message.fromObject(message); // as WAMessageContent
+    }
+
+    public async sendMessageGroupInternal(jid: string | WapJid, message: WAProto.IMessage) {
         const phone = typeof jid == 'string' ? jid : jid.getUser();
 
         const encodedMessage = new Binary(WAProto.Message.encode(message).finish());
@@ -576,6 +837,10 @@ export class WaClient extends EventEmitter {
                 }
             }
 
+            const shouldHaveIdentity = participants.some((p) => {
+                return p.content.some((c) => c.attrs.type == 'pkmsg');
+            });
+
             const stanza = new WapNode(
                 'message',
                 {
@@ -585,7 +850,7 @@ export class WaClient extends EventEmitter {
                     type: 'text',
                 },
                 [
-                    new WapNode('participants', {}, participants),
+                    ...(shouldHaveIdentity ? [new WapNode('participants', {}, participants)] : []),
                     new WapNode(
                         'enc',
                         {
@@ -594,16 +859,16 @@ export class WaClient extends EventEmitter {
                         },
                         new Uint8Array(ciphertext),
                     ),
-                    new WapNode('device-identity', {}, deviceIdentity),
+                    ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : []),
                 ],
             );
             this.sendMessageAndWait(stanza);
         } catch (e) {}
     }
 
-    public async sendMessage(jid: string | WapJid, message: WAProto.IMessage) {
+    public async sendMessageInternal(jid: string | WapJid, message: WAProto.IMessage) {
         if ((typeof jid == 'string' && isGroupID(jid)) || (jid instanceof WapJid && jid.isGroup())) {
-            return this.sendMessageGroup(jid, message);
+            return this.sendMessageGroupInternal(jid, message);
         }
 
         // return
@@ -647,6 +912,10 @@ export class WaClient extends EventEmitter {
 
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
 
+        const shouldHaveIdentity = participants.some((p) => {
+            return p.content.some((c) => c.attrs.type == 'pkmsg');
+        });
+
         const stanza = new WapNode(
             'message',
             {
@@ -654,7 +923,7 @@ export class WaClient extends EventEmitter {
                 type: 'text',
                 to: WapJid.create(destinationPhone, 's.whatsapp.net'),
             },
-            [new WapNode('participants', {}, participants), new WapNode('device-identity', {}, deviceIdentity)],
+            [new WapNode('participants', {}, participants), ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : [])],
         );
 
         const frame = encodeStanza(stanza);
@@ -691,6 +960,60 @@ export class WaClient extends EventEmitter {
             return null;
         }
     };
+
+    public async isOnWhatsApp(jid: string) {
+        const contact = `+${jid}@c.us`;
+
+        const iq = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: S_WHATSAPP_NET,
+                type: 'get',
+                xmlns: 'usync',
+            },
+            [
+                new WapNode(
+                    'usync',
+                    {
+                        sid: generateId(),
+                        mode: 'query',
+                        last: 'true',
+                        index: '0',
+                        context: 'interactive',
+                    },
+                    [
+                        new WapNode(
+                            'query',
+                            {},
+                            [new WapNode('contact'), new WapNode('business', {}, [new WapNode('verified_name')])],
+                        ),
+                        new WapNode('list', {}, [new WapNode('user', {}, [new WapNode('contact', {}, contact)])]),
+                    ],
+                ),
+            ],
+        );
+
+        const resultFrame = await this.sendMessageAndWait(iq);
+
+        const userNode = resultFrame.child('usync')?.child('list').child('user') ?? null;
+        const contactNode = userNode.child('contact');
+        const business = userNode.maybeChild('business');
+
+        if (contactNode.attrs.type == 'out') {
+            return {
+                exists: false,
+                jid: null,
+                business: false
+            };
+        }
+
+        return {
+            exists: true,
+            jid: userNode.attrs.jid.getUser(),
+            business: !!business
+        };
+    }
 
     protected getUSyncDevices = async (jids: WapJid[], ignoreZeroDevice = true): Promise<any> => {
         const users = jids.map((jid) => {
@@ -760,6 +1083,213 @@ export class WaClient extends EventEmitter {
         return devicesToReturn;
     };
 
+    async setGroupName(groupPhone: string, name: string) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [wapBytes('subject', null, name)],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupDescription(groupPhone: string, description: string) {
+        const info = await this.getGroupInfo(groupPhone);
+        const prev = info.description ? info.description.attrs.id : null;
+        const content = description
+            ? wapBytes(
+                  'description',
+                  {
+                      id: generateId(),
+                      ...(prev ? { prev } : {}),
+                  },
+                  wapBytes('body', null, description),
+              )
+            : wapBytes(
+                  'description',
+                  {
+                      delete: 'true',
+                      ...(prev ? { prev } : {}),
+                  },
+                  null,
+              );
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [content],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupSettingsSendMessage(groupPhone: string, onlyAdmin: boolean) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [new WapNode(onlyAdmin ? 'announcement' : 'not_announcement', {}, null)],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async getGroupInvitationCode(groupPhone: string): Promise<string> {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'get',
+                xmlns: 'w:g2',
+            },
+            [new WapNode('invite', {}, null)],
+        );
+        const invitationCode = await this.sendMessageAndWait(stanza);
+        return invitationCode.content[0].attrs.code;
+    }
+
+    async addOrRemoveGroupParticipants(groupPhone: string, type: 'ADD' | 'REMOVE', participants: string[]) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode(
+                    type == 'ADD' ? 'add' : 'remove',
+                    {},
+                    participants.map((p) => {
+                        return new WapNode(
+                            'participant',
+                            {
+                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                            },
+                            null,
+                        );
+                    }),
+                ),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async addOrRemoveGroupAdmin(groupPhone: string, type: 'PROMOTE' | 'DEMOTE', participants: string[]) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode(
+                    type == 'PROMOTE' ? 'promote' : 'demote',
+                    {},
+                    participants.map((p) => {
+                        return new WapNode(
+                            'participant',
+                            {
+                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                            },
+                            null,
+                        );
+                    }),
+                ),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    async setGroupImage(groupPhone: string, image: Uint8Array) {
+        // needs change to jpg 512x512
+        const buffer = await sharp(image).resize(512, 512).jpeg({ quality: 50, progressive: true }).toBuffer();
+
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(groupPhone, 'g.us'),
+                type: 'set',
+                xmlns: 'w:profile:picture',
+            },
+            [new WapNode('picture', { type: 'image' }, new Uint8Array(buffer))],
+        );
+
+        const result = await this.sendMessageAndWait(stanza);
+        console.dir(result, { depth: null });
+    }
+
+    async leaveGroup(groupPhone: string) {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: WapJid.create(null, 'g.us'),
+                type: 'set',
+                xmlns: 'w:g2',
+            },
+            [
+                new WapNode('leave', {}, [
+                    new WapNode(
+                        'group',
+                        {
+                            id: WapJid.create(groupPhone, 'g.us'),
+                        },
+                        null,
+                    ),
+                ]),
+            ],
+        );
+        await this.sendMessageAndWait(stanza);
+    }
+
+    public async createGroup(name: string, participants: string[]) {
+        const participantsNode = participants.map((participant) => {
+            return new WapNode('participant', {
+                jid: WapJid.create(participant.replace('@c.us', '').replace('@s.whatsapp.net', ''), 's.whatsapp.net'),
+            });
+        });
+
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                type: 'set',
+                xmlns: 'w:g2',
+                to: G_US,
+            },
+            [
+                new WapNode(
+                    'create',
+                    {
+                        subject: name,
+                        key: randomHex(8),
+                    },
+                    participantsNode,
+                ),
+            ],
+        );
+
+        const result = await this.sendMessageAndWait(stanza);
+
+        return result;
+    }
+
     public async getGroupInfo(groupPhone: string) {
         const stanza = new WapNode(
             'iq',
@@ -779,6 +1309,7 @@ export class WaClient extends EventEmitter {
             id: group.attrs.id,
             creation: group.attrs.creation,
             creator: group.attrs.creator,
+            description: group.content.find((c) => c.tag == 'description'),
             participants: group.content
                 .filter((content: WapNode) => content.tag === 'participant')
                 .map((content: WapNode) => {
@@ -786,6 +1317,191 @@ export class WaClient extends EventEmitter {
                 }),
         };
         return data;
+    }
+
+    public async processProtocolMessage(node: WapNode, msgInfo: any, message: WAProto.IMessage) {
+        console.log(message);
+        const protocolMessage = message.protocolMessage;
+
+        if (protocolMessage.historySyncNotification) {
+            await this.processHistorySyncNotification(protocolMessage.historySyncNotification);
+        }
+    }
+
+    private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
+        const buffer = await this.downloadFromMediaConn(
+            {
+                directPath: historyNotification.directPath,
+                encFilehash: encodeB64(historyNotification.fileEncSha256),
+                filehash: encodeB64(historyNotification.fileSha256),
+                mediaKey: historyNotification.mediaKey,
+                type: 'md-msg-hist',
+                messageType: 'historySync',
+            },
+            'buffer',
+        );
+
+        const dataPromise = new Promise<Buffer>((res) => {
+            inflate(buffer as Buffer, (err, result) => {
+                if (err) {
+                    console.error('err to inflate history sync');
+                    return;
+                }
+
+                res(result);
+            });
+        });
+
+        const syncData = WAProto.HistorySync.decode(await dataPromise);
+
+        console.log('downloaded sync', syncData);
+    }
+
+    public getMessageType(message: WAProto.IMessage) {
+        const msg = message.deviceSentMessage ? message.deviceSentMessage.message : message;
+
+        if (msg.imageMessage) {
+            return MessageType.image;
+        }
+
+        if (msg.stickerMessage) {
+            return MessageType.sticker;
+        }
+
+        if (msg.videoMessage) {
+            return MessageType.video;
+        }
+
+        if (msg.audioMessage) {
+            return MessageType.audio;
+        }
+
+        if (msg.documentMessage) {
+            return MessageType.document;
+        }
+
+        if (msg.productMessage) {
+            return MessageType.product;
+        }
+
+        if (msg.conversation) {
+            return MessageType.text;
+        }
+
+        return null;
+    }
+
+    public isMedia(message: WAProto.IMessage) {
+        return [MessageType.image, MessageType.video, MessageType.sticker, MessageType.document, MessageType.audio].includes(this.getMessageType(message));
+    }
+
+    public async downloadMedia(message: WAProto.IMessage) {
+        const type = this.getMessageType(message);
+
+        if (!this.isMedia(message)) {
+            console.log('err to download not a media message');
+            return null;
+        }
+
+        const content = message[type] as any;
+        if (!content) {
+            console.log('invalid media content');
+            return null;
+        }
+
+        if (!content.url) {
+            return null;
+
+            /*return this.downloadFromMediaConn(
+                {
+                    directPath: content.directPath,
+                    encFilehash: encodeB64(content.fileEncSha256),
+                    filehash: encodeB64(content.fileSha256),
+                    mediaKey: content.mediaKey,
+                    type: 'md-msg-hist',
+                    messageType: 'historySync',
+                },
+                'buffer',
+            );*/
+        }
+
+        return this.downloadMediaMessage('buffer', content.url, content.mediaKey, type);
+    }
+
+    private async downloadMediaMessage(type: string, url: string, mediaKey: Uint8Array, messageType: MessageType) {
+        const stream = await downloadAndDecrypt(url, mediaKey, messageType);
+        if (type === 'buffer') {
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+            return buffer;
+        }
+        return stream;
+    }
+
+    private async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
+        const mediaConn = await this.refreshMediaConn(forceGet);
+
+        let url = media.directPath ?? null;
+        if (!url) {
+            throw new Error('invalid media url');
+        }
+
+        for (const host of mediaConn.hosts) {
+            const reqUrl = `https://${host}${url}&hash=${media.encFilehash}&mms-type=${media.type}&__wa-mms=`;
+
+            console.log('downloading media', reqUrl);
+
+            try {
+                const data = await this.downloadMediaMessage(type, reqUrl, media.mediaKey, media.messageType);
+
+                return data;
+            } catch (err) {
+                console.log('err to download', err);
+            }
+        }
+    }
+
+    private async refreshMediaConn(forceGet = false) {
+        if (!this.mediaConn || forceGet || new Date().getTime() - this.mediaConn.fetchDate.getTime() > this.mediaConn.TTL * 1000) {
+            this.mediaConn = await this.sendQueryMediaConn();
+            this.mediaConn.fetchDate = new Date();
+        }
+
+        return this.mediaConn;
+    }
+
+    private async sendQueryMediaConn() {
+        const stanza = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                type: 'set',
+                xmlns: 'w:m',
+                to: S_WHATSAPP_NET,
+            },
+            [new WapNode('media_conn')],
+        );
+
+        const result = await this.sendMessageAndWait(stanza);
+
+        const mediaConn = result.child('media_conn');
+        if (!mediaConn) {
+            throw new Error('invalid media conn');
+        }
+
+        const hosts = mediaConn.mapChildrenWithTag('host', (host: WapNode) => {
+            return host.attrs.hostname;
+        });
+
+        return <IMediaConn>{
+            auth: mediaConn.attrString('auth'),
+            TTL: mediaConn.attrInt('ttl'),
+            authTTL: mediaConn.attrInt('auth_ttl'),
+            maxBuckets: mediaConn.attrInt('max_buckets'),
+            hosts,
+        };
     }
 
     private createKeepAlive = () => {

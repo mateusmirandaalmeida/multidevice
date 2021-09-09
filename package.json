@@ -8,21 +8,26 @@
   },
   "devDependencies": {
     "@types/bytebuffer": "^5.0.42",
+    "@types/mime-types": "^2.1.1",
     "@types/node": "^16.3.3",
     "@types/qrcode-terminal": "^0.12.0",
+    "@types/sharp": "^0.29.0",
     "@types/ws": "^7.4.6",
     "ts-node": "^10.1.0",
     "ts-node-dev": "^1.1.8",
     "typescript": "^4.3.5"
   },
   "dependencies": {
-    "@signalapp/signal-client": "^0.8.4",
-    "@wireapp/proteus": "^9.12.1",
     "bytebuffer": "^5.0.1",
     "curve25519-js": "^0.0.4",
+    "got": "^11.8.2",
     "libsignal": "github:pokearaujo/libsignal-node",
+    "mime-types": "^2.1.32",
+    "music-metadata": "^7.11.4",
     "protobufjs": "^6.11.2",
     "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.29.1",
+    "url": "^0.11.0",
     "ws": "^7.5.3",
     "zlib": "^1.0.5"
   }

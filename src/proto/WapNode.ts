@@ -146,7 +146,7 @@ export class WapNode {
     }
 
     maybeAttrString(e) {
-        return this.hasAttr(e) && typeof this.attrs[e] == 'string' ? this.attrs[e] : null;
+        return this.hasAttr(e) && typeof this.attrs[e]?.toString() == 'string' ? this.attrs[e]?.toString() : null;
     }
 
     attrString(e) {
@@ -167,6 +167,20 @@ export class WapNode {
     attrUserWid(e) {
         let wid = null;
         const jid = this.attrString(e);
+
+        try {
+            wid = new Wid(jid);
+        } catch (e) {}
+
+        return wid && wid.isUser() ? toUserWid(wid) : this.throw(`to have "${e}"={UserJid}, but instead has "${jid}"`);
+    }
+
+    attrMaybeUserWid(e) {
+        let wid = null;
+        const jid = this.maybeAttrString(e);
+        if (!jid) {
+            return null;
+        }
 
         try {
             wid = new Wid(jid);
