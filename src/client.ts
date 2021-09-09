@@ -1145,7 +1145,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(groupPhone.replace('@g.us', ''), 'g.us'),
                 type: 'get',
                 xmlns: 'w:g2',
             },
