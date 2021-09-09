@@ -34,7 +34,7 @@ import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
 import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
-import { proto as WAProto } from './proto/WAMessage';
+import { proto as WAProto } from '../WAMessage/WAMessage';
 
 import { StorageService } from './services/StorageService';
 import { NoiseSocket } from './socket/NoiseSocket';

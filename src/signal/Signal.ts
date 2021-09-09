@@ -5,7 +5,7 @@ import { WapJid } from '../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
 import ByteBuffer from 'bytebuffer';
-import { proto as WAProto } from '../proto/WAMessage';
+import { proto as WAProto } from '../../WAMessage/WAMessage';
 interface IIdentity {
     identifier: ProtocolAddress;
     identifierKey: Key;

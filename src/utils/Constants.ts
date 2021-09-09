@@ -1,5 +1,5 @@
 import { URL } from 'url';
-import { proto as WAProto } from '../proto/WAMessage';
+import { proto as WAProto } from '../../WAMessage/WAMessage';
 import { Agent } from 'https';
 import { MessageType } from './Utils';
 
