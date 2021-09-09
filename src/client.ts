@@ -1293,7 +1293,7 @@ export class WaClient extends EventEmitter {
                 id: generateId(),
                 type: 'get',
                 xmlns: 'w:g2',
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(groupPhone.replace('g.us', ''), 'g.us'),
             },
             [new WapNode('query', { request: 'interactive' })],
         );
