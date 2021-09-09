@@ -48,17 +48,7 @@ import { EventEmitter } from 'stream';
 import { EventHandlerService } from './services/EventHandlerService';
 import { IMediaConn } from './interfaces/IMediaConn';
 import { inflate } from 'zlib';
-import {
-    WAMediaUpload,
-    WATextMessage,
-    MessageOptions,
-    WAMessageType,
-    WAMessageContent,
-    MimetypeMap,
-    Mimetype,
-    MessageTypeProto,
-    MediaPathMap,
-} from './utils/Constants';
+import { WAMediaUpload, WATextMessage, MessageOptions, WAMessageType, WAMessageContent, MimetypeMap, Mimetype, MessageTypeProto, MediaPathMap } from './utils/Constants';
 import { createReadStream, writeFileSync } from 'fs';
 import got, { Method } from 'got';
 import { Agent } from 'https';
@@ -70,8 +60,8 @@ const sessions = {};
 interface Props {
     sessionName: string;
     log?: boolean;
-    initialStorageData?: any,
-    writeFileStorage?: boolean,
+    initialStorageData?: any;
+    writeFileStorage?: boolean;
     /**
      * @description Callback stops when socket is closed
      */
@@ -993,11 +983,7 @@ export class WaClient extends EventEmitter {
                         context: 'interactive',
                     },
                     [
-                        new WapNode(
-                            'query',
-                            {},
-                            [new WapNode('contact'), new WapNode('business', {}, [new WapNode('verified_name')])],
-                        ),
+                        new WapNode('query', {}, [new WapNode('contact'), new WapNode('business', {}, [new WapNode('verified_name')])]),
                         new WapNode('list', {}, [new WapNode('user', {}, [new WapNode('contact', {}, contact)])]),
                     ],
                 ),
@@ -1014,14 +1000,14 @@ export class WaClient extends EventEmitter {
             return {
                 exists: false,
                 jid: null,
-                business: false
+                business: false,
             };
         }
 
         return {
             exists: true,
             jid: userNode.attrs.jid.getUser(),
-            business: !!business
+            business: !!business,
         };
     }
 
@@ -1313,12 +1299,17 @@ export class WaClient extends EventEmitter {
         );
 
         const result = await this.sendMessageAndWait(stanza);
+        console.log('RESULT INFO');
+        console.dir(result, { depth: null });
+
         const group: WapNode = result.content[0];
         const data = {
             name: group.attrs.subject,
             id: group.attrs.id,
             creation: group.attrs.creation,
             creator: group.attrs.creator,
+            restrict: result.hasChild('locked'),
+            announce: result.hasChild('announcement'),
             description: group.content.find((c) => c.tag == 'description'),
             participants: group.content
                 .filter((content: WapNode) => content.tag === 'participant')

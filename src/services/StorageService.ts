@@ -24,7 +24,7 @@ export class StorageService {
     }
 
     public init(fileName: string) {
-        if (this.writeFileStorage) {
+        if (!this.writeFileStorage) {
             return;
         }
         
@@ -171,7 +171,7 @@ export class StorageService {
     }
 
     private writeStorage() {
-        if (this.writeFileStorage) {
+        if (!this.writeFileStorage) {
             return;
         }
         writeFileSync(this.storagePath, JSON.stringify(this.storage));
