@@ -1303,8 +1303,11 @@ export class WaClient extends EventEmitter {
         const group: WapNode = result.content[0];
         let description = null;
         if (group.hasChild('description')) {
-            const desc = group.child('description').child('body');
-            description = desc.contentString();
+            const desc = group.child('description')?.child('body') ?? null;
+
+            if (desc) {
+                description = desc.contentString();
+            }
         }
 
         const data = {
