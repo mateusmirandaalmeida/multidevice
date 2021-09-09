@@ -1299,8 +1299,6 @@ export class WaClient extends EventEmitter {
         );
 
         const result = await this.sendMessageAndWait(stanza);
-        console.log('RESULT INFO');
-        console.dir(result, { depth: null });
 
         const group: WapNode = result.content[0];
         const data = {
