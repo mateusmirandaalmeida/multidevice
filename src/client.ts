@@ -123,7 +123,7 @@ export class WaClient extends EventEmitter {
         this.sessionName = sessionName;
         this.onSocketClose = onSocketClose;
         this.enableLog = log ?? false;
-        this.storageService = new StorageService('./sessions', initialStorageData, writeFileStorage);
+        this.storageService = new StorageService('./sessions', initialStorageData, writeFileStorage ?? true);
 
         this.initConfig();
     }
