@@ -49,10 +49,6 @@ import { EventHandlerService } from './services/EventHandlerService';
 import { IMediaConn } from './interfaces/IMediaConn';
 import { inflate } from 'zlib';
 import {
-    WAContactMessage,
-    WAContactsArrayMessage,
-    WAGroupInviteMessage,
-    WALocationMessage,
     WAMediaUpload,
     WATextMessage,
     MessageOptions,
@@ -68,7 +64,6 @@ import got, { Method } from 'got';
 import { Agent } from 'https';
 import { promises as fs } from 'fs';
 import sharp from 'sharp';
-import { decode } from 'punycode';
 
 const sessions = {};
 
