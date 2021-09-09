@@ -324,6 +324,10 @@ export class WaClient extends EventEmitter {
         this.socketConn.sendFrame(encodeStanza(stanza));
     };
 
+    public getMe() {
+        return this.me;
+    }
+
     public sendNotAuthozired(id: string) {
         this.socketConn.sendFrame(
             encodeStanza(
