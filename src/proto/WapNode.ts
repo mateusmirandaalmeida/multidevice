@@ -92,6 +92,13 @@ export class WapNode {
         return this.content.find((node) => node.tag == tagName);
     }
 
+    getContentType() : string {
+        if (!Array.isArray(this.content)) {
+            return null;
+        }
+        return this.content[0]?.tag || null;
+    }
+    
     maybeChild(tag: string) {
         if (!this.content || !Array.isArray(this.content)) {
             return null;
@@ -107,6 +114,7 @@ export class WapNode {
 
         return this.content.filter((node) => node.tag == tag).map(callback);
     }
+
 
     forEachChildWithTag(tag: string, callback: any) {
         if (!this.content || !Array.isArray(this.content)) {

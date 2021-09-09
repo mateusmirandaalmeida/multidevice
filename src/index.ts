@@ -25,26 +25,17 @@ import got from 'got';
         console.log('received qr', qr);
     })
 
-    session.on('group-participants-update', (update: any) => {
+    session.on('group-update', (update: any) => {
         console.log('received group update', update);
     });
 
     session.on('message', async (message: any) => {
-        console.log('message received', message);
+        console.log('message received', (message));
 
         const messageType = session.getMessageType(message);
 
         let mediaBuffer = null;
-        if (session.isMedia(message)) {
-            mediaBuffer = (await session.downloadMedia(message)) as Buffer;
-            if (!existsSync('./files')) {
-                mkdirSync('./files');
-            }
-
-            writeFileSync(`./files/${message.externalId}.${mimeTypes.extension(message[messageType].mimetype) ?? ''}`, mediaBuffer, {
-                flag: 'w',
-            });
-        }
+      
 
         const conversation = message.conversation ?? message.deviceSentMessage?.message?.conversation ?? message[messageType]?.caption ?? null;
 
@@ -253,7 +244,16 @@ import got from 'got';
 
                 return;
             }
+              if (session.isMedia(message)) {
+                mediaBuffer = (await session.downloadMedia(message)) as Buffer;
+                if (!existsSync('./files')) {
+                    mkdirSync('./files');
+                }
 
+            writeFileSync(`./files/${message.externalId}.${mimeTypes.extension(message[messageType].mimetype) ?? ''}`, mediaBuffer, {
+                flag: 'w',
+            });
+        }
             await session.setGroupImage(id, mediaBuffer);
 
             await session.sendMessage(message.chat, 'Group image has changed', MessageType.text);
