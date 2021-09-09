@@ -7,3 +7,4 @@ codes
 package-lock.json
 yarn.lock
 files
+dist

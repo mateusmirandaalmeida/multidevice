@@ -1,10 +1,12 @@
 {
   "name": "multidevice",
   "version": "1.0.0",
-  "main": "index.js",
   "license": "MIT",
+  "main": "dist/client.js",
+  "types": "dist/client.d.ts",
   "scripts": {
-    "start": "tsnd src/index.ts"
+    "start": "tsnd src/index.ts",
+    "build:tsc": "tsc"
   },
   "devDependencies": {
     "@types/bytebuffer": "^5.0.42",
