@@ -1,5 +1,5 @@
-import { Binary } from './../proto/Binary';
-import { Wid } from './../proto/Wid';
+import { Binary } from '../proto/Binary';
+import { Wid } from '../proto/Wid';
 
 var r = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
           , a = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102];

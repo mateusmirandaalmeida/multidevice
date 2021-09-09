@@ -1,4 +1,4 @@
-import { Binary } from './../proto/Binary';
+import { Binary } from '../proto/Binary';
 import { Socket } from './Socket';
 
 export class FrameSocket {

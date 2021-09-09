@@ -1,8 +1,8 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
 import { Wid } from '../../proto/Wid';
-import { JID } from './../../utils/Utils';
-import { encodeStanza } from './../../proto/Stanza';
+import { JID } from '../../utils/Utils';
+import { encodeStanza } from '../../proto/Stanza';
 
 export class RetryReceiptHandler extends Handler {
     public async handle(node: WapNode) {

@@ -1,6 +1,6 @@
 import { KeyPair, SignedKeyPair } from "../utils/Curve";
 import { intToBytes, VERSION_ENCODED } from "../utils/Utils";
-import { proto as WAProto } from './../proto/WAMessage';
+import { proto as WAProto } from '../proto/WAMessage';
 
 export const generatePayloadRegister = (
   registrationId: number,

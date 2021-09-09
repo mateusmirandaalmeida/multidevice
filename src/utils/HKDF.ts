@@ -1,5 +1,5 @@
 import * as Crypto from 'crypto';
-import { Binary } from './../proto/Binary';
+import { Binary } from '../proto/Binary';
 
 const crypto = Crypto.webcrypto as any;
 

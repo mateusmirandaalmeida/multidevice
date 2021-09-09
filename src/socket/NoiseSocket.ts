@@ -1,4 +1,4 @@
-import { PromiseQueue } from './../utils/PromiseQueue';
+import { PromiseQueue } from '../utils/PromiseQueue';
 import { FrameSocket } from './FrameSocket';
 import * as Crypto from 'crypto';
 

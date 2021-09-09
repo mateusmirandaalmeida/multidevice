@@ -1,9 +1,9 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
 import { Wid } from '../../proto/Wid';
-import { WapJid } from './../../proto/WapJid';
-import { MESSAGE_TYPE, unpadRandomMax16 } from './../../utils/Utils';
-import { proto as WAProto } from './../../proto/WAMessage';
+import { WapJid } from '../../proto/WapJid';
+import { MESSAGE_TYPE, unpadRandomMax16 } from '../../utils/Utils';
+import { proto as WAProto } from '../../proto/WAMessage';
 
 const getFrom = (msg: any) => (msg.type == MESSAGE_TYPE.CHAT ? msg.author : msg.chat);
 

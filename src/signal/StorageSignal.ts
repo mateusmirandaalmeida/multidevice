@@ -1,5 +1,5 @@
 import { Key, KeyPair, PreKey } from '../utils/Curve';
-import { SignedKeyPair } from './../utils/Curve';
+import { SignedKeyPair } from '../utils/Curve';
 import { StorageService } from '../services/StorageService';
 
 export class StorageSignal {

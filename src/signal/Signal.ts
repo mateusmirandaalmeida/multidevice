@@ -1,7 +1,7 @@
 import { ProtocolAddress } from './ProtocolAddress';
-import { generatePreKey, Key, PreKey } from './../utils/Curve';
+import { generatePreKey, Key, PreKey } from '../utils/Curve';
 import libsignal from 'libsignal';
-import { WapJid } from './../proto/WapJid';
+import { WapJid } from '../proto/WapJid';
 import { StorageService } from '../services/StorageService';
 import { StorageSignal } from './StorageSignal';
 import ByteBuffer from 'bytebuffer';

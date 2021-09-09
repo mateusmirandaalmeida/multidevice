@@ -1,6 +1,6 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
-import { encodeStanza } from './../../proto/Stanza';
+import { encodeStanza } from '../../proto/Stanza';
 
 export class MessageAckHandler extends Handler {
     public async handle(node: WapNode) {
