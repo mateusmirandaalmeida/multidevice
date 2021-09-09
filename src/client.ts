@@ -59,7 +59,7 @@ import {
     MessageTypeProto,
     MediaPathMap,
 } from './utils/Constants';
-import { createReadStream } from 'fs';
+import { createReadStream, writeFileSync } from 'fs';
 import got, { Method } from 'got';
 import { Agent } from 'https';
 import { promises as fs } from 'fs';
@@ -70,6 +70,8 @@ const sessions = {};
 interface Props {
     sessionName: string;
     log?: boolean;
+    initialStorageData?: any,
+    writeFileStorage?: boolean,
     /**
      * @description Callback stops when socket is closed
      */
@@ -110,7 +112,7 @@ export class WaClient extends EventEmitter {
 
     private devices: Wid[];
 
-    constructor({ sessionName, onSocketClose, log }: Props) {
+    constructor({ sessionName, onSocketClose, log, initialStorageData, writeFileStorage }: Props) {
         super();
 
         if (sessions[sessionName]) {
@@ -121,7 +123,7 @@ export class WaClient extends EventEmitter {
         this.sessionName = sessionName;
         this.onSocketClose = onSocketClose;
         this.enableLog = log ?? false;
-        this.storageService = new StorageService('./sessions');
+        this.storageService = new StorageService('./sessions', initialStorageData, writeFileStorage);
 
         this.initConfig();
     }
@@ -365,6 +367,10 @@ export class WaClient extends EventEmitter {
 
     public getSignedIdentityKey() {
         return this.signedIdentityKey;
+    }
+
+    public getStorage() {
+        return this.storageService;
     }
 
     public getSignedPreKey() {

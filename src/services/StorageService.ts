@@ -13,15 +13,27 @@ export class StorageService {
         [key: string]: any;
     } = {};
 
-    constructor(public defaultFolter = './sessions') {
-        if (!fs.existsSync(defaultFolter)) {
+    constructor(public defaultFolter = './sessions', public initialStorageData: any = null, public writeFileStorage = true) {
+        if (!fs.existsSync(defaultFolter) && writeFileStorage) {
             fs.mkdirSync(defaultFolter, { recursive: true });
+        }
+
+        if (initialStorageData) {
+            this.storage = initialStorageData;
         }
     }
 
     public init(fileName: string) {
+        if (this.writeFileStorage) {
+            return;
+        }
+        
         this.storagePath = path.join(this.defaultFolter, fileName);
         this.loadStorage();
+    }
+
+    public getData() {
+        return this.storage;
     }
 
     public clearAll() {
@@ -159,6 +171,9 @@ export class StorageService {
     }
 
     private writeStorage() {
+        if (this.writeFileStorage) {
+            return;
+        }
         writeFileSync(this.storagePath, JSON.stringify(this.storage));
     }
 }
