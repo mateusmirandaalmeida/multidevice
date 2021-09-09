@@ -19,7 +19,7 @@ export class StorageService {
         }
 
         if (initialStorageData) {
-            this.storage = initialStorageData;
+            this.storage = this.parseData(initialStorageData);;
         }
     }
 
