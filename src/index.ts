@@ -23,7 +23,7 @@ import got from 'got';
 
     session.on('qr', (qr: string) => {
         console.log('received qr', qr);
-    })
+    });
 
     session.on('group-participants-update', (update: any) => {
         console.log('received group update', update);
@@ -342,6 +342,10 @@ import got from 'got';
             };
 
             await session.sendMessage(message.chat, button, MessageType.listMessage);
+        }
+
+        if (conversation == '!sendimage') {
+            await session.sendMessage(message.chat, { url: 'https://avatars.githubusercontent.com/u/13368319?v=4' }, MessageType.image);
         }
     });
 
