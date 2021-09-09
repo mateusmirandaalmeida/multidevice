@@ -148,6 +148,21 @@ import got from 'got';
             await session.sendMessage(message.chat, `Group invite code: ${code}`, MessageType.text);
         }
 
+        if (conversation.startsWith('!info')) {
+            if (!message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
+
+                return;
+            }
+
+            const id = message.chat.getUser();
+
+            const info = await session.getGroupInfo(id);
+
+            console.log('info');
+            console.dir(info, { depth: null });
+        }
+
         if (conversation.startsWith('!add')) {
             if (!message.chat.isGroup()) {
                 await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
