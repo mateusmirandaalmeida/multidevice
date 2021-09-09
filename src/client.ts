@@ -962,7 +962,7 @@ export class WaClient extends EventEmitter {
     };
 
     public async isOnWhatsApp(jid: string) {
-        const contact = `+${jid}@c.us`;
+        const contact = `+${jid.replace('@s.whatsapp.net', '').replace('@c.us', '')}@c.us`;
 
         const iq = new WapNode(
             'iq',
