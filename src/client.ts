@@ -1301,6 +1301,12 @@ export class WaClient extends EventEmitter {
         const result = await this.sendMessageAndWait(stanza);
 
         const group: WapNode = result.content[0];
+        let description = null;
+        if (group.hasChild('description')) {
+            const desc = group.child('description').child('body');
+            description = desc.contentString();
+        }
+
         const data = {
             name: group.attrs.subject,
             id: group.attrs.id,
@@ -1308,11 +1314,15 @@ export class WaClient extends EventEmitter {
             creator: group.attrs.creator,
             restrict: result.hasChild('locked'),
             announce: result.hasChild('announcement'),
-            description: group.content.find((c) => c.tag == 'description'),
+            description,
             participants: group.content
                 .filter((content: WapNode) => content.tag === 'participant')
                 .map((content: WapNode) => {
-                    return content.attrs.jid;
+                    return {
+                        jid: content.attrs.jid.toString(),
+                        isAdmin: content.attrs?.type == 'admin' ? true : false,
+                        isSuperAdmin: content.attrs?.type == 'superadmin' ? true : false,
+                    };
                 }),
         };
         return data;
