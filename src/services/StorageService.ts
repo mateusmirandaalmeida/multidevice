@@ -13,9 +13,9 @@ export class StorageService {
         [key: string]: any;
     } = {};
 
-    constructor(public defaultFolter = './sessions', public initialStorageData: any = null, public writeFileStorage = true) {
-        if (!fs.existsSync(defaultFolter) && writeFileStorage) {
-            fs.mkdirSync(defaultFolter, { recursive: true });
+    constructor(public defaultFolder = './sessions', public initialStorageData: any = null, public writeFileStorage = true) {
+        if (!fs.existsSync(defaultFolder) && writeFileStorage) {
+            fs.mkdirSync(defaultFolder, { recursive: true });
         }
 
         if (initialStorageData) {
@@ -28,7 +28,7 @@ export class StorageService {
             return;
         }
         
-        this.storagePath = path.join(this.defaultFolter, fileName);
+        this.storagePath = path.join(this.defaultFolder, fileName);
         this.loadStorage();
     }
 
