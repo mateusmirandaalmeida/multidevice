@@ -19,7 +19,7 @@ import {
     generateThumbnail,
     getAudioDuration,
     DEFAULT_ORIGIN,
-    unixTimestampSeconds,
+    unixTimestampSeconds
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -32,7 +32,7 @@ import { encodeStanza, generateId, decodeStanza, unpackStanza } from './proto/St
 import { generateIdentityKeyPair, generateRegistrationId, generateSignedPreKey, KeyPair, sharedKey, SignedKeyPair } from './utils/Curve';
 import { WapNode } from './proto/WapNode';
 import { encodeB64 } from './utils/Base64';
-import { G_US, S_WHATSAPP_NET, WapJid } from './proto/WapJid';
+import { G_US, S_WHATSAPP_NET, toUserId, WapJid } from './proto/WapJid';
 import { generatePayloadLogin } from './payloads/LoginPayload';
 import { proto as WAProto } from '../WAMessage/WAMessage';
 
@@ -808,7 +808,7 @@ export class WaClient extends EventEmitter {
     }
 
     public async sendMessageGroupInternal(jid: string | WapJid, message: WAProto.IMessage) {
-        const phone = typeof jid == 'string' ? jid.replace('@g.us', '') : jid.getUser();
+        const phone = typeof jid == 'string' ? toUserId(jid) : jid.getUser();
 
         const encodedMessage = new Binary(WAProto.Message.encode(message).finish());
         writeRandomPadMax16(encodedMessage);
@@ -877,7 +877,7 @@ export class WaClient extends EventEmitter {
         // }
 
         const account = await this.storageService.get('account');
-        const destinationPhone = typeof jid == 'string' ? jid.replace('@s.whatsapp.net', '').replace('@c.us', '') : jid.getUser();
+        const destinationPhone = typeof jid == 'string' ? toUserId(jid) : jid.getUser();
         const destinationJid = new Wid(`${destinationPhone}@c.us`);
 
         const deviceSentMessage = {
@@ -916,10 +916,12 @@ export class WaClient extends EventEmitter {
             return p.content.some((c) => c.attrs.type == 'pkmsg');
         });
 
+
+        const messageId = generateMessageID();
         const stanza = new WapNode(
             'message',
             {
-                id: generateMessageID(),
+                id: messageId,
                 type: 'text',
                 to: WapJid.create(destinationPhone, 's.whatsapp.net'),
             },
@@ -928,6 +930,8 @@ export class WaClient extends EventEmitter {
 
         const frame = encodeStanza(stanza);
         this.socketConn.sendFrame(frame);
+
+        return messageId;
     }
 
     createWapNodeParticipant = async (body, jidAd) => {
@@ -962,7 +966,11 @@ export class WaClient extends EventEmitter {
     };
 
     public async isOnWhatsApp(jid: string) {
-        const contact = `+${jid.replace('@s.whatsapp.net', '').replace('@c.us', '')}@c.us`;
+        if (isGroupID(jid)) {
+            return null;
+        }
+
+        const contact = `+${toUserId(jid)}@c.us`;
 
         const iq = new WapNode(
             'iq',
@@ -1009,6 +1017,54 @@ export class WaClient extends EventEmitter {
             jid: userNode.attrs.jid.getUser(),
             business: !!business,
         };
+    }
+
+    public async getContactInfo(jids: string[]) {
+        const users = jids.map((jid) => {
+            return new WapNode(
+                'user',
+                {
+                    jid: WapJid.create(toUserId(jid), USER_JID_SUFFIX),
+                },
+                null,
+            );
+        });
+
+        const iq = new WapNode(
+            'iq',
+            {
+                id: generateId(),
+                to: S_WHATSAPP_NET,
+                type: 'get',
+                xmlns: 'usync',
+            },
+            [
+                new WapNode(
+                    'usync',
+                    {
+                        sid: generateId(),
+                        mode: 'full',
+                        last: 'true',
+                        index: '0',
+                        context: 'background',
+                    },
+                    [
+                        new WapNode('query', {}, [
+                            new WapNode('business', {}, [new WapNode('verified_name')]),
+                            new WapNode('status'),
+                            new WapNode('picture'),
+                            new WapNode('devices', { version: '2' }, null),
+                        ]),
+                        new WapNode('list', {}, users),
+                    ],
+                ),
+            ],
+        );
+
+        const resultFrame: any = await this.sendMessageAndWait(iq);
+        
+        // need parse result
+        return resultFrame;
     }
 
     protected getUSyncDevices = async (jids: WapJid[], ignoreZeroDevice = true): Promise<any> => {
@@ -1084,7 +1140,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1117,7 +1173,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1131,7 +1187,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1145,7 +1201,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone.replace('@g.us', ''), 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'get',
                 xmlns: 'w:g2',
             },
@@ -1160,7 +1216,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1172,7 +1228,7 @@ export class WaClient extends EventEmitter {
                         return new WapNode(
                             'participant',
                             {
-                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                                jid: WapJid.create(toUserId(p), USER_JID_SUFFIX),
                             },
                             null,
                         );
@@ -1188,7 +1244,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1200,7 +1256,7 @@ export class WaClient extends EventEmitter {
                         return new WapNode(
                             'participant',
                             {
-                                jid: WapJid.create(p, USER_JID_SUFFIX),
+                                jid: WapJid.create(toUserId(p), USER_JID_SUFFIX),
                             },
                             null,
                         );
@@ -1219,7 +1275,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(groupPhone, 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
                 type: 'set',
                 xmlns: 'w:profile:picture',
             },
@@ -1235,7 +1291,7 @@ export class WaClient extends EventEmitter {
             'iq',
             {
                 id: generateId(),
-                to: WapJid.create(null, 'g.us'),
+                to: G_US,
                 type: 'set',
                 xmlns: 'w:g2',
             },
@@ -1244,7 +1300,7 @@ export class WaClient extends EventEmitter {
                     new WapNode(
                         'group',
                         {
-                            id: WapJid.create(groupPhone, 'g.us'),
+                            id: WapJid.create(toUserId(groupPhone), 'g.us'),
                         },
                         null,
                     ),
@@ -1257,7 +1313,7 @@ export class WaClient extends EventEmitter {
     public async createGroup(name: string, participants: string[]) {
         const participantsNode = participants.map((participant) => {
             return new WapNode('participant', {
-                jid: WapJid.create(participant.replace('@c.us', '').replace('@s.whatsapp.net', ''), 's.whatsapp.net'),
+                jid: WapJid.create(toUserId(participant), USER_JID_SUFFIX),
             });
         });
 
@@ -1293,7 +1349,7 @@ export class WaClient extends EventEmitter {
                 id: generateId(),
                 type: 'get',
                 xmlns: 'w:g2',
-                to: WapJid.create(groupPhone.replace('@g.us', ''), 'g.us'),
+                to: WapJid.create(toUserId(groupPhone), 'g.us'),
             },
             [new WapNode('query', { request: 'interactive' })],
         );

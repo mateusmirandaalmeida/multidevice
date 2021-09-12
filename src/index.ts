@@ -163,6 +163,19 @@ import got from 'got';
             console.dir(info, { depth: null });
         }
 
+        if (conversation.startsWith('!contactinfo')) {
+            if (message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command not allowned in group', MessageType.text);
+
+                return;
+            }
+
+            const info = await session.getContactInfo([message.chat]);
+
+            console.log('info');
+            console.dir(info, { depth: null });
+        }
+
         if (conversation.startsWith('!add')) {
             if (!message.chat.isGroup()) {
                 await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);

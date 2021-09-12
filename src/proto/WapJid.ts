@@ -1,5 +1,6 @@
 import { OFFICIAL_BIZ_WID, USER_JID_SUFFIX } from '../utils/Utils';
 
+export const toUserId = (jid: string) => jid ? jid.replace(/(@c.us|@s.whatsapp.net|@g.us)/g, '') : null;
 interface WapJidProps {
     type: number;
     user: any;
@@ -23,7 +24,7 @@ export class WapJid {
     static createAD(user: string, agent: number, device: number, ignoreServer = false) {
         return new WapJid({
             type: WapJid.JID_AD,
-            user,
+            user: toUserId(user),
             device: device ?? 0,
             agent: agent ?? 0,
             ...(ignoreServer ? {} : { server: 's.whatsapp.net' }),
@@ -33,7 +34,7 @@ export class WapJid {
     static create(user: string, server?: string, device?) {
         return new WapJid({
             type: WapJid.JID,
-            user,
+            user: toUserId(user),
             server,
             ...(device || device == 0 ? { device } : {}),
         });
