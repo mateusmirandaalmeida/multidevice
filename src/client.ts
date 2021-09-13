@@ -54,6 +54,7 @@ import got, { Method } from 'got';
 import { Agent } from 'https';
 import { promises as fs } from 'fs';
 import sharp from 'sharp';
+import { IWAGroupMetadata } from './interfaces/IWAGroupMetadata';
 
 const sessions = {};
 
@@ -820,7 +821,8 @@ export class WaClient extends EventEmitter {
             const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
             const participants: WapNode[] = [];
             const groupData = await this.getGroupInfo(phone);
-            const devices: WapJid[] = await this.getUSyncDevices(groupData.participants, false);
+            const participantsList = groupData.participants.map((part) => WapJid.create(part.jid, USER_JID_SUFFIX));
+            const devices: WapJid[] = await this.getUSyncDevices(participantsList, false);
 
             for (let index = 0; index < devices.length; index++) {
                 const device = devices[index];
@@ -846,7 +848,7 @@ export class WaClient extends EventEmitter {
                 {
                     to: destination,
                     id: generateMessageID(),
-                    phash: await phashV2(groupData.participants),
+                    phash: await phashV2(participantsList),
                     type: 'text',
                 },
                 [
@@ -1151,12 +1153,13 @@ export class WaClient extends EventEmitter {
 
     async setGroupDescription(groupPhone: string, description: string) {
         const info = await this.getGroupInfo(groupPhone);
-        const prev = info.description ? info.description.attrs.id : null;
+        const prev = info.descriptionId ?? null;
+
         const content = description
             ? wapBytes(
                   'description',
                   {
-                      id: generateId(),
+                      id: generateMessageID(),
                       ...(prev ? { prev } : {}),
                   },
                   wapBytes('body', null, description),
@@ -1358,15 +1361,17 @@ export class WaClient extends EventEmitter {
 
         const group: WapNode = result.content[0];
         let description = null;
+        let descriptionId = null;
         if (group.hasChild('description')) {
-            const desc = group.child('description')?.child('body') ?? null;
-
+            const desc = group.child('description') ?? null;
             if (desc) {
-                description = desc.contentString();
+                const body = desc.child('body') ?? null;
+                description = body ? body.contentString() : null;
+                descriptionId = desc.attrs?.id ?? null;
             }
         }
 
-        const data = {
+        const data = <IWAGroupMetadata>{
             name: group.attrs.subject,
             id: group.attrs.id,
             creation: group.attrs.creation,
@@ -1374,6 +1379,7 @@ export class WaClient extends EventEmitter {
             restrict: result.hasChild('locked'),
             announce: result.hasChild('announcement'),
             description,
+            descriptionId,
             participants: group.content
                 .filter((content: WapNode) => content.tag === 'participant')
                 .map((content: WapNode) => {
