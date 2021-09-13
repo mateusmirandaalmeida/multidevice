@@ -19,7 +19,7 @@ import {
     generateThumbnail,
     getAudioDuration,
     DEFAULT_ORIGIN,
-    unixTimestampSeconds
+    unixTimestampSeconds,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -918,7 +918,6 @@ export class WaClient extends EventEmitter {
             return p.content.some((c) => c.attrs.type == 'pkmsg');
         });
 
-
         const messageId = generateMessageID();
         const stanza = new WapNode(
             'message',
@@ -1064,7 +1063,7 @@ export class WaClient extends EventEmitter {
         );
 
         const resultFrame: any = await this.sendMessageAndWait(iq);
-        
+
         // need parse result
         return resultFrame;
     }
@@ -1400,6 +1399,19 @@ export class WaClient extends EventEmitter {
         if (protocolMessage.historySyncNotification) {
             await this.processHistorySyncNotification(protocolMessage.historySyncNotification);
         }
+
+        if (node.attrs.id) {
+            this.sendReciptHistorySync(node.attrs.id);
+        }
+    }
+
+    private sendReciptHistorySync(id: string) {
+        const receipt = new WapNode('receipt', {
+            id,
+            type: 'hist_sync',
+            to: WapJid.create(this.me.getUser(), 'c.us'),
+        });
+        this.socketConn.sendFrame(encodeStanza(receipt));
     }
 
     private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
