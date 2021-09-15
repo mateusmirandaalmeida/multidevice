@@ -320,7 +320,7 @@ export class WaClient extends EventEmitter {
     };
     
     public encodeStanza(node: any) {
-        console.log('\x1b[34m', 'TO SERVER -> ', '\x1b[0m', node instanceof WapNode ? node.toString() : node);
+        console.log('TO SERVER -> ', node instanceof WapNode ? node.toString() : node);
         return encodeStanza(node);        
     }
 
@@ -527,7 +527,7 @@ export class WaClient extends EventEmitter {
         const data = await unpackStanza(frame);
         const stanza = decodeStanza(data);
         await this.handleStanza(stanza);
-        this.log('\x1b[32m', 'FROM SERVER ->', '\x1b[0m', stanza.toString());
+        this.log('FROM SERVER ->', stanza.toString());
     };
 
     public async ensureIdentityUser(user: WapJid, forceNewSession = false) {
