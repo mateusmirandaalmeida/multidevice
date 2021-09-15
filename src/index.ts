@@ -11,7 +11,7 @@ import got from 'got';
         onSocketClose: (e) => {
             console.error(e);
         },
-        //log: true
+        log: true,
     });
 
     console.log('open connection');
@@ -23,10 +23,14 @@ import got from 'got';
 
     session.on('qr', (qr: string) => {
         console.log('received qr', qr);
-    })
+    });
 
     session.on('group-update', (update: any) => {
         console.log('received group update', update);
+    });
+
+    session.on('close', (update: any) => {
+        console.log('connection was closed', update);
     });
 
     session.on('message', async (message: any) => {
@@ -137,6 +141,34 @@ import got from 'got';
             const code = await session.getGroupInvitationCode(id);
 
             await session.sendMessage(message.chat, `Group invite code: ${code}`, MessageType.text);
+        }
+
+        if (conversation.startsWith('!info')) {
+            if (!message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command allowned only in group', MessageType.text);
+
+                return;
+            }
+
+            const id = message.chat.getUser();
+
+            const info = await session.getGroupInfo(id);
+
+            console.log('info');
+            console.dir(info, { depth: null });
+        }
+
+        if (conversation.startsWith('!contactinfo')) {
+            if (message.chat.isGroup()) {
+                await session.sendMessage(message.chat, 'Command not allowned in group', MessageType.text);
+
+                return;
+            }
+
+            const info = await session.getContactInfo([message.chat]);
+
+            console.log('info');
+            console.dir(info, { depth: null });
         }
 
         if (conversation.startsWith('!add')) {
@@ -285,6 +317,18 @@ import got from 'got';
             await session.sendMessage(message.chat, `Number exists: *${result.exists ? 'true' : 'false'}*\nNumber: *${result.jid ? result.jid : 'N/A'}*`, MessageType.text);
         }
 
+        if (conversation.startsWith('!close')) {
+            await session.sendMessage(message.chat, 'Closing session', MessageType.text);
+
+            session.destroy();
+        }
+
+        if (conversation.startsWith('!testid')) {
+            const msg = await session.sendMessage(message.chat, 'Testing message id', MessageType.text);
+
+            await session.sendMessage(message.chat, `Last message id: *${msg.id}*`, MessageType.text);
+        }
+
         if (conversation == '!buttons') {
             await session.sendMessage(
                 message.chat,
@@ -313,6 +357,38 @@ import got from 'got';
             );
         }
 
+        if (conversation == '!buttonsurl') {
+            const buttons = [
+                {
+                    label: 'Google',
+                    url: 'https://google.com',
+                },
+                {
+                    label: 'Facebook',
+                    url: 'https://facebook.com',
+                },
+            ];
+
+            await session.sendMessage(
+                message.chat,
+                {
+                    hydratedTemplate: {
+                        hydratedContentText: 'Test',
+                        hydratedButtons: buttons.map((button, i) => {
+                            return {
+                                index: i,
+                                urlButton: {
+                                    displayText: button.label,
+                                    url: button.url,
+                                },
+                            };
+                        }),
+                    },
+                },
+                MessageType.templateMessage,
+            );
+        }
+
         if (conversation == '!list') {
             const rows = [
                 { title: 'Row 1', description: "Hello it's description 1", rowId: 'rowid1' },
@@ -327,6 +403,10 @@ import got from 'got';
             };
 
             await session.sendMessage(message.chat, button, MessageType.listMessage);
+        }
+
+        if (conversation == '!sendimage') {
+            await session.sendMessage(message.chat, { url: 'https://avatars.githubusercontent.com/u/13368319?v=4' }, MessageType.image);
         }
     });
 

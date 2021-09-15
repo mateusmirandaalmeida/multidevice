@@ -1,9 +1,9 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
 import { Wid } from '../../proto/Wid';
-import { WapJid } from './../../proto/WapJid';
-import { MESSAGE_TYPE, unpadRandomMax16 } from './../../utils/Utils';
-import { proto as WAProto } from './../../proto/WAMessage';
+import { WapJid } from '../../proto/WapJid';
+import { MESSAGE_TYPE, unpadRandomMax16 } from '../../utils/Utils';
+import { proto as WAProto } from '../../../WAMessage/WAMessage';
 
 const getFrom = (msg: any) => (msg.type == MESSAGE_TYPE.CHAT ? msg.author : msg.chat);
 
@@ -110,13 +110,13 @@ export class MessageHandler extends Handler {
             const isDirect = encMap.every((enc) => enc.e2eType != 'skmsg');
             const isRetry = encMap.some((enc) => enc.retryCount > 0);
 
-            this.client.log({
+            /*this.client.log({
                 from,
                 recipient,
                 participants,
                 isDirect,
                 isRetry,
-            });
+            });*/
 
             const participantsNode = node.maybeChild('participants');
             if (participantsNode) {

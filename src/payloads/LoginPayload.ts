@@ -1,5 +1,5 @@
 import { WapJid } from "../proto/WapJid";
-import { proto as WAProto } from './../proto/WAMessage';
+import { proto as WAProto } from '../../WAMessage/WAMessage';
 
 export const generatePayloadLogin = (user: WapJid) => {
   const payload = {

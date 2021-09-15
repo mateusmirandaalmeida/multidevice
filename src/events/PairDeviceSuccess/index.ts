@@ -3,9 +3,9 @@ import { Handler } from '../Handler';
 import { S_WHATSAPP_NET } from '../../proto/WapJid';
 import { encodeStanza } from '../../proto/Stanza';
 import { decodeB64, encodeB64 } from '../../utils/Base64';
-import { proto as WAProto } from './../../proto/WAMessage';
+import { proto as WAProto } from '../../../WAMessage/WAMessage';
 import { hmacSha256 } from '../../utils/HKDF';
-import { generateDeviceSignature, verifyDeviceIdentityAccountSignature } from './../../utils/Utils';
+import { generateDeviceSignature, verifyDeviceIdentityAccountSignature } from '../../utils/Utils';
 import { Key } from '../../utils/Curve';
 
 export class PairDeviceSuccessHandler extends Handler {

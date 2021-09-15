@@ -91,14 +91,14 @@ export class GroupNotificationHandler extends Handler {
        //console.log(stanza.getContentByTag(action), "Type:- ", action);
 
         const removed: {
-            participant: Wid;
-            admin?: Wid;
+            participant: string;
+            admin?: string;
             reason: string;
         }[] = [];
 
         const added: {
-            participant: Wid;
-            admin?: Wid;
+            participant: string;
+            admin?: string;
             reason: string;
         }[] = [];
 
@@ -194,9 +194,9 @@ export class GroupNotificationHandler extends Handler {
             const reason = isSame ? 'left' : 'admin';
 
             removed.push({
-                participant: removedParticipant,
+                participant: removedParticipant.toString(),
                 reason,
-                ...(!isSame ? { admin: participant } : {}),
+                ...(!isSame ? { admin: participant.toString() } : {}),
             });
         });
 
@@ -206,9 +206,9 @@ export class GroupNotificationHandler extends Handler {
             const reason = node.maybeAttrString('reason') == 'invite' ? 'invite' : 'admin';
 
             added.push({
-                participant: addedParticipant,
+                participant: addedParticipant.toString(),
                 reason,
-                ...(reason == 'admin' ? { admin: participant } : {}),
+                ...(reason == 'admin' ? { admin: participant.toString() } : {}),
             });
         });
 

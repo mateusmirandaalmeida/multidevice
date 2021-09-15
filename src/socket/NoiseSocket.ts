@@ -1,4 +1,4 @@
-import { PromiseQueue } from './../utils/PromiseQueue';
+import { PromiseQueue } from '../utils/PromiseQueue';
 import { FrameSocket } from './FrameSocket';
 import * as Crypto from 'crypto';
 
@@ -33,10 +33,10 @@ export class NoiseSocket {
         socket.convertBufferedToFrames();
     }
 
-    public sendCiphertextFrame(data: Uint8Array) {
+    public async sendCiphertextFrame(data: Uint8Array) {
         this.socket.throwIfClosed();
 
-        this.socket.sendFrame(data);
+        return this.socket.sendFrame(data);
     }
 
     public sendFrame(data: Uint8Array) {
@@ -47,7 +47,7 @@ export class NoiseSocket {
         this.socket.throwIfClosed();
 
         const currCount = this.writeCounter++;
-        this.sendQueue.enqueueHandlers(
+        return this.sendQueue.enqueueHandlers(
             crypto.subtle.encrypt(
                 {
                     name: 'AES-GCM',
@@ -57,7 +57,7 @@ export class NoiseSocket {
                 this.writeKey,
                 data,
             ),
-            this.sendCiphertextFrame.bind(this),
+            this.sendCiphertextFrame.bind(this)
         );
     }
 

@@ -1,6 +1,6 @@
 import { DICTIONARIES_MAP, randomBytes, SINGLE_BYTE_TOKEN, SINGLE_BYTE_TOKEN_MAP } from '../utils/Utils';
 import { WapJid } from './WapJid';
-import { DICTIONARIES } from './../utils/Utils';
+import { DICTIONARIES } from '../utils/Utils';
 import { WapNode } from './WapNode';
 import { Binary, numUtf8Bytes } from './Binary';
 import zlib from 'zlib';
@@ -240,7 +240,6 @@ export const buildWapNode = (e: any) => {
 };
 
 export const encodeStanza = (e) => {
-    //console.log('will send to server', e);
     const node = e instanceof WapNode ? e : buildWapNode(e);
 
     const data = new Binary();

@@ -1,19 +1,19 @@
  
-import { WaClient } from './../client';
-import { WapNode } from './../proto/WapNode';
+import { WaClient } from '../client';
+import { WapNode } from '../proto/WapNode';
 import { PairDeviceHandler } from '../events/PairDevice';
-import { Handler } from './../events/Handler';
-import { NoiseSocket } from './../socket/NoiseSocket';
+import { Handler } from '../events/Handler';
+import { NoiseSocket } from '../socket/NoiseSocket';
 import { StorageService } from './StorageService';
-import { WaSignal } from './../signal/Signal';
-import { PairDeviceSuccessHandler } from './../events/PairDeviceSuccess';
-import { StreamErrorHandler } from './../events/StreamError';
-import { StreamFailureHandler } from './../events/StreamFailure/index';
-import { DevicesNotificationHandler } from './../events/DevicesNotification/index';
-import { MessageAckHandler } from './../events/MessageAck/index';
-import { MessageHandler } from './../events/Message/index';
-import { RetryReceiptHandler } from './../events/RetryReceipt/index';
-import { SuccessHandler } from './../events/Success/index';
+import { WaSignal } from '../signal/Signal';
+import { PairDeviceSuccessHandler } from '../events/PairDeviceSuccess';
+import { StreamErrorHandler } from '../events/StreamError';
+import { StreamFailureHandler } from '../events/StreamFailure/index';
+import { DevicesNotificationHandler } from '../events/DevicesNotification/index';
+import { MessageAckHandler } from '../events/MessageAck/index';
+import { MessageHandler } from '../events/Message/index';
+import { RetryReceiptHandler } from '../events/RetryReceipt/index';
+import { SuccessHandler } from '../events/Success/index';
 import { GroupNotificationHandler } from '../events/GroupNotification';
 
 export class EventHandlerService {

@@ -1,9 +1,9 @@
-import { NoiseSocket } from './../socket/NoiseSocket';
-import { WaClient } from './../client';
-import { WapNode } from './../proto/WapNode';
-import { EventHandlerService } from './../services/EventHandlerService';
-import { StorageService } from './../services/StorageService';
-import { WaSignal } from './../signal/Signal';
+import { NoiseSocket } from '../socket/NoiseSocket';
+import { WaClient } from '../client';
+import { WapNode } from '../proto/WapNode';
+import { EventHandlerService } from '../services/EventHandlerService';
+import { StorageService } from '../services/StorageService';
+import { WaSignal } from '../signal/Signal';
 
 export class Handler {
     protected socket: NoiseSocket;
