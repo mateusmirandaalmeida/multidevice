@@ -241,7 +241,7 @@ export class WaClient extends EventEmitter {
 
     private onNoiseSocketClose = () => {
         this.emit('close', {
-            reason: 'close'
+            reason: 'close',
         });
 
         this.destroyKeepAlive();
@@ -318,10 +318,10 @@ export class WaClient extends EventEmitter {
 
         this.socketConn.sendFrame(this.encodeStanza(stanza));
     };
-    
+
     public encodeStanza(node: any) {
         console.log('TO SERVER -> ', node instanceof WapNode ? node.toString() : node);
-        return encodeStanza(node);        
+        return encodeStanza(node);
     }
 
     public getMe() {
@@ -710,6 +710,9 @@ export class WaClient extends EventEmitter {
                 break;
             case MessageType.buttonsMessage:
                 m.buttonsMessage = WAProto.ButtonsMessage.fromObject(message as any);
+                break;
+            case MessageType.templateMessage:
+                m.templateMessage = WAProto.TemplateMessage.fromObject(message as any);
                 break;
             case MessageType.image:
             case MessageType.sticker:

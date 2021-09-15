@@ -9,6 +9,7 @@ export type WAContactMessage = WAProto.ContactMessage;
 export type WAContactsArrayMessage = WAProto.ContactsArrayMessage;
 export type WAGroupInviteMessage = WAProto.GroupInviteMessage;
 export type WAListMessage = WAProto.IListMessage;
+export type WATemplateMessage = WAProto.ITemplateMessage;
 export type WAButtonsMessage = WAProto.IButtonsMessage;
 export type WAMessageKey = WAProto.IMessageKey;
 export type WATextMessage = WAProto.ExtendedTextMessage;
@@ -73,7 +74,7 @@ export interface MessageOptions {
     messageId?: string;
 }
 
-export type WAMessageType = string | WATextMessage | WALocationMessage | WAContactMessage | WAContactsArrayMessage | WAGroupInviteMessage | WAMediaUpload | WAListMessage | WAButtonsMessage;
+export type WAMessageType = string | WATextMessage | WALocationMessage | WAContactMessage | WAContactsArrayMessage | WAGroupInviteMessage | WAMediaUpload | WAListMessage | WAButtonsMessage | WATemplateMessage;
 
 export const MediaPathMap = {
     imageMessage: '/mms/image',

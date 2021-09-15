@@ -11,7 +11,7 @@ import got from 'got';
         onSocketClose: (e) => {
             console.error(e);
         },
-        log: true
+        log: true,
     });
 
     console.log('open connection');
@@ -325,7 +325,7 @@ import got from 'got';
 
         if (conversation.startsWith('!testid')) {
             const msg = await session.sendMessage(message.chat, 'Testing message id', MessageType.text);
-            
+
             await session.sendMessage(message.chat, `Last message id: *${msg.id}*`, MessageType.text);
         }
 
@@ -354,6 +354,38 @@ import got from 'got';
                     ],
                 },
                 MessageType.buttonsMessage,
+            );
+        }
+
+        if (conversation == '!buttonsurl') {
+            const buttons = [
+                {
+                    label: 'Google',
+                    url: 'https://google.com',
+                },
+                {
+                    label: 'Facebook',
+                    url: 'https://facebook.com',
+                },
+            ];
+
+            await session.sendMessage(
+                message.chat,
+                {
+                    hydratedTemplate: {
+                        hydratedContentText: 'Test',
+                        hydratedButtons: buttons.map((button, i) => {
+                            return {
+                                index: i,
+                                urlButton: {
+                                    displayText: button.label,
+                                    url: button.url,
+                                },
+                            };
+                        }),
+                    },
+                },
+                MessageType.templateMessage,
             );
         }
 

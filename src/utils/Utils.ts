@@ -292,6 +292,7 @@ export enum MessageType {
   protocolMessage = 'protocolMessage',
   listMessage = 'listMessage',
   buttonsMessage = 'buttonsMessage',
+  templateMessage = 'templateMessage',
   historySync = 'historySync',
   appState = 'appState',
 
