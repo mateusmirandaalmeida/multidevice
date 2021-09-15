@@ -110,13 +110,13 @@ export class MessageHandler extends Handler {
             const isDirect = encMap.every((enc) => enc.e2eType != 'skmsg');
             const isRetry = encMap.some((enc) => enc.retryCount > 0);
 
-            this.client.log({
+            /*this.client.log({
                 from,
                 recipient,
                 participants,
                 isDirect,
                 isRetry,
-            });
+            });*/
 
             const participantsNode = node.maybeChild('participants');
             if (participantsNode) {

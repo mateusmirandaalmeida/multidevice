@@ -240,7 +240,6 @@ export const buildWapNode = (e: any) => {
 };
 
 export const encodeStanza = (e) => {
-    //console.log('will send to server', e);
     const node = e instanceof WapNode ? e : buildWapNode(e);
 
     const data = new Binary();

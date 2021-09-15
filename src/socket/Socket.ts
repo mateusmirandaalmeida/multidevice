@@ -41,7 +41,7 @@ export class Socket {
         throw new TypeError("expected ArrayBuffer from the socket");
       }
       const newData = new Uint8Array(e.data);
-      console.warn("received msg", newData.byteLength);
+      //console.warn("received msg", newData.byteLength);
       this.onData && this.onData(newData);
     };
 
@@ -82,7 +82,7 @@ export class Socket {
     this.open();
   }
 
-  public requestSend() {
+  public async requestSend() {
     this.throwIfClosed();
 
     if (!this.dataToSend.size()) {
@@ -90,11 +90,22 @@ export class Socket {
       return;
     }
 
-    try {
-      console.log("SEND TO SERVER", this.dataToSend.size());
-      this.conn.send(this.dataToSend.readByteArray());
-    } catch (e) {
-      console.log(`exception sending: ${e}\n${e.stack}`);
-    }
+    return new Promise((resolve, reject) => {
+      try {
+        //console.log("SEND TO SERVER", this.dataToSend.size());
+        this.conn.send(this.dataToSend.readByteArray(), (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          resolve(true);
+        });
+      } catch (e) {
+        console.log(`exception sending: ${e}\n${e.stack}`);
+        reject(e);
+      }
+    });
+ 
   }
 }

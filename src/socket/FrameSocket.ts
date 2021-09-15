@@ -47,7 +47,7 @@ export class FrameSocket {
         this.socket.dataToSend.writeUint16(65535 & size);
         this.socket.dataToSend.write(data);
 
-        this.socket.requestSend();
+        return this.socket.requestSend();
     }
 
     public throwIfClosed() {

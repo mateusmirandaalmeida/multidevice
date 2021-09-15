@@ -11,7 +11,7 @@ import got from 'got';
         onSocketClose: (e) => {
             console.error(e);
         },
-        //log: true
+        log: true
     });
 
     console.log('open connection');
@@ -27,6 +27,10 @@ import got from 'got';
 
     session.on('group-participants-update', (update: any) => {
         console.log('received group update', update);
+    });
+
+    session.on('close', (update: any) => {
+        console.log('connection was closed', update);
     });
 
     session.on('message', async (message: any) => {
@@ -311,6 +315,18 @@ import got from 'got';
             const result = await session.isOnWhatsApp(number);
 
             await session.sendMessage(message.chat, `Number exists: *${result.exists ? 'true' : 'false'}*\nNumber: *${result.jid ? result.jid : 'N/A'}*`, MessageType.text);
+        }
+
+        if (conversation.startsWith('!close')) {
+            await session.sendMessage(message.chat, 'Closing session', MessageType.text);
+
+            session.destroy();
+        }
+
+        if (conversation.startsWith('!testid')) {
+            const msg = await session.sendMessage(message.chat, 'Testing message id', MessageType.text);
+            
+            await session.sendMessage(message.chat, `Last message id: *${msg.id}*`, MessageType.text);
         }
 
         if (conversation == '!buttons') {

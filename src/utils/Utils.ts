@@ -386,10 +386,6 @@ export const encryptedStream = async(media: WAMediaUpload, mediaType: MessageTyp
 
   const mediaKey = randomBytes(32)
   const {cipherKey, iv, macKey} = await getMediaKeys(mediaKey, mediaType)
-  console.log('mediaKey', mediaKey);
-  console.log('cipherKey', cipherKey);
-  console.log('iv', iv);
-  console.log('iv', macKey);
 
   // random name
   const encBodyPath = join(tmpdir(), mediaType + generateMessageID() + '.enc')

@@ -129,6 +129,10 @@ export class WapNode {
     }
 
     attrsToString(e) {
+        if (!e) {
+            return '';
+        }
+        
         for (var t = Object.keys(e), r = '', a = 0; a < t.length; a++) {
             var i = t[a];
             r += ` ${i}="${e[i].toString()}"`;

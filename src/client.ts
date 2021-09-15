@@ -240,6 +240,10 @@ export class WaClient extends EventEmitter {
     };
 
     private onNoiseSocketClose = () => {
+        this.emit('close', {
+            reason: 'close'
+        });
+
         this.destroyKeepAlive();
         if (this.onSocketClose) {
             this.onSocketClose();
@@ -252,13 +256,13 @@ export class WaClient extends EventEmitter {
                 resolve,
                 reject,
             };
-            const frame = encodeStanza(stanza);
+            const frame = this.encodeStanza(stanza);
             this.socketConn.sendFrame(frame);
         });
     }
 
     onlySendFrame(stanza: WapNode) {
-        const frame = encodeStanza(stanza);
+        const frame = this.encodeStanza(stanza);
         if (!this.socketConn) {
             throw 'No Socket Handler';
         }
@@ -295,7 +299,7 @@ export class WaClient extends EventEmitter {
             ],
         );
         const lastId = preKeys[preKeys.length - 1];
-        this.socketConn.sendFrame(encodeStanza(stanza));
+        this.socketConn.sendFrame(this.encodeStanza(stanza));
         await this.waSignal.markKeyAsUploaded(lastId.keyId);
         await this.waSignal.putServerHasPreKeys(true);
     };
@@ -312,8 +316,13 @@ export class WaClient extends EventEmitter {
             [new WapNode(passive ? 'passive' : 'active', null)],
         );
 
-        this.socketConn.sendFrame(encodeStanza(stanza));
+        this.socketConn.sendFrame(this.encodeStanza(stanza));
     };
+    
+    public encodeStanza(node: any) {
+        console.log('\x1b[34m', 'TO SERVER -> ', '\x1b[0m', node instanceof WapNode ? node.toString() : node);
+        return encodeStanza(node);        
+    }
 
     public getMe() {
         return this.me;
@@ -321,7 +330,7 @@ export class WaClient extends EventEmitter {
 
     public sendNotAuthozired(id: string) {
         this.socketConn.sendFrame(
-            encodeStanza(
+            this.encodeStanza(
                 new WapNode(
                     'iq',
                     {
@@ -499,7 +508,7 @@ export class WaClient extends EventEmitter {
         }
 
         const tag = stanza.tag;
-        this.log('received tag node', tag);
+        //this.log('received tag node', tag);
 
         if (tag == 'xmlstreamend') {
             this.socketConn.restart();
@@ -518,7 +527,7 @@ export class WaClient extends EventEmitter {
         const data = await unpackStanza(frame);
         const stanza = decodeStanza(data);
         await this.handleStanza(stanza);
-        this.log(stanza);
+        this.log('\x1b[32m', 'FROM SERVER ->', '\x1b[0m', stanza.toString());
     };
 
     public async ensureIdentityUser(user: WapJid, forceNewSession = false) {
@@ -573,8 +582,12 @@ export class WaClient extends EventEmitter {
 
     public async sendMessage(id: string | WapJid, message: WAMessageType, type: MessageType, options: MessageOptions = {}) {
         const waMessage = await this.prepareMessage(message, type, options);
-        await this.sendMessageInternal(id, waMessage);
-        return waMessage;
+        const messageId = await this.sendMessageInternal(id, waMessage);
+
+        return {
+            id: messageId,
+            message: waMessage,
+        };
     }
 
     // baileys
@@ -910,7 +923,7 @@ export class WaClient extends EventEmitter {
             }
         }
 
-        console.dir(participants, { depth: null });
+        //console.dir(participants, { depth: null });
 
         const deviceIdentity = WAProto.ADVSignedDeviceIdentity.encode(account).finish();
 
@@ -929,8 +942,8 @@ export class WaClient extends EventEmitter {
             [new WapNode('participants', {}, participants), ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : [])],
         );
 
-        const frame = encodeStanza(stanza);
-        this.socketConn.sendFrame(frame);
+        const frame = this.encodeStanza(stanza);
+        await this.socketConn.sendFrame(frame);
 
         return messageId;
     }
@@ -1440,7 +1453,7 @@ export class WaClient extends EventEmitter {
 
         const syncData = WAProto.HistorySync.decode(await dataPromise);
 
-        console.log('downloaded sync', syncData);
+        //console.log('downloaded sync', syncData);
     }
 
     public getMessageType(message: WAProto.IMessage) {
@@ -1592,9 +1605,8 @@ export class WaClient extends EventEmitter {
 
     private createKeepAlive = () => {
         this.keepAliveTimer = setInterval(() => {
-            this.log('send ping to server');
             this.socketConn.sendFrame(
-                encodeStanza(
+                this.encodeStanza(
                     new WapNode(
                         'iq',
                         {
@@ -1613,12 +1625,14 @@ export class WaClient extends EventEmitter {
     private destroyKeepAlive = () => {
         if (this.keepAliveTimer) {
             clearInterval(this.keepAliveTimer);
+            this.keepAliveTimer = null;
         }
     };
 
     destroy() {
         this.socketConn.close();
-        this.socket.close();
+        delete this.socketConn;
+        this.destroyKeepAlive();
         delete sessions[this.sessionName];
     }
 }

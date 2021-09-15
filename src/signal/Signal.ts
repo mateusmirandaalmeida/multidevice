@@ -81,7 +81,7 @@ export class WaSignal {
 
     getOrGenSinglePreKey() {
         return this.getOrGenPreKeys(1).then((e) => {
-            if (1 !== e.length) throw Error('Expected to get exactly one key but got ${keys.length}');
+            if (1 !== e.length) throw Error(`Expected to get exactly one key but got ${e.length}`);
             return e[0];
         });
     }
