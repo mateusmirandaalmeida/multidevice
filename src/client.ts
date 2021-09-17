@@ -1420,7 +1420,7 @@ export class WaClient extends EventEmitter {
             }
         }
 
-        if (node.attrs.category == 'peer') {
+        if ((node.attrs?.category ?? null) == 'peer') {
             await this.sendReceiptProtocolMessage(node.attrs.id, 'peer_msg');
         }
     }
