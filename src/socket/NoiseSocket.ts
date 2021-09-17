@@ -39,7 +39,7 @@ export class NoiseSocket {
         return this.socket.sendFrame(data);
     }
 
-    public sendFrame(data: Uint8Array) {
+    public async sendFrame(data: Uint8Array) {
         if (this.draining) {
             return;
         }

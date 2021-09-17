@@ -1,7 +1,6 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
 import { S_WHATSAPP_NET } from '../../proto/WapJid';
-import { encodeStanza } from '../../proto/Stanza';
 import { decodeB64, encodeB64 } from '../../utils/Base64';
 import { proto as WAProto } from '../../../WAMessage/WAMessage';
 import { hmacSha256 } from '../../utils/HKDF';
@@ -25,7 +24,7 @@ export class PairDeviceSuccessHandler extends Handler {
         if (encodeB64(hmac) !== encodeB64(new Uint8Array(advSign))) {
             this.client.log('invalid hmac from pair-device success');
 
-            this.client.sendNotAuthozired(data.id);
+            await this.client.sendNotAuthozired(data.id);
             // TODO MAKE CLEAR THE STORAGE KEYS
             return;
         }
@@ -41,7 +40,7 @@ export class PairDeviceSuccessHandler extends Handler {
 
         if (!verifyDeviceIdentityAccountSignature(account, identityKeyPair)) {
             this.client.log('invalid device signature');
-            this.client.sendNotAuthozired(data.id);
+            await this.client.sendNotAuthozired(data.id);
             return;
         }
 
@@ -58,7 +57,7 @@ export class PairDeviceSuccessHandler extends Handler {
 
         const accountEnc = WAProto.ADVSignedDeviceIdentity.encode(acc).finish();
 
-        const stanza = encodeStanza(
+        const stanza = this.client.encodeStanza(
             new WapNode(
                 'iq',
                 {
@@ -80,7 +79,7 @@ export class PairDeviceSuccessHandler extends Handler {
             ),
         );
 
-        this.socket.sendFrame(stanza);
+        await this.socket.sendFrame(stanza);
         await this.storageService.save('me', data.wid);
 
         this.client.emit('authenticated', data.wid);

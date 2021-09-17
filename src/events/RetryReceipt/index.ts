@@ -1,14 +1,12 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
-import { Wid } from '../../proto/Wid';
 import { JID } from '../../utils/Utils';
-import { encodeStanza } from '../../proto/Stanza';
 
 export class RetryReceiptHandler extends Handler {
     public async handle(node: WapNode) {
         const data = await this.parse(node);
 
-        var { from, participant, recipient, retryCount, stanzaId } = data;
+        const { from, participant, recipient, retryCount, stanzaId } = data;
         const receipt = new WapNode(
             'ack',
             {
@@ -21,7 +19,7 @@ export class RetryReceiptHandler extends Handler {
             null,
         );
 
-        this.socket.sendFrame(encodeStanza(receipt));
+        await this.socket.sendFrame(this.client.encodeStanza(receipt));
 
         return true;
     }
