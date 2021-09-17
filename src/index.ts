@@ -38,19 +38,20 @@ import got from 'got';
 
         const messageType = session.getMessageType(message);
 
+        const msgContent = message.deviceSentMessage?.message ?? message; 
         let mediaBuffer = null;
-        if (session.isMedia(message)) {
-            mediaBuffer = (await session.downloadMedia(message)) as Buffer;
+        if (session.isMedia(msgContent)) {
+            mediaBuffer = (await session.downloadMedia(msgContent)) as Buffer;
             if (!existsSync('./files')) {
                 mkdirSync('./files');
             }
 
-            writeFileSync(`./files/${message.externalId}.${mimeTypes.extension(message[messageType].mimetype) ?? ''}`, mediaBuffer, {
+            writeFileSync(`./files/${message.externalId}.${mimeTypes.extension(msgContent[messageType].mimetype) ?? ''}`, mediaBuffer, {
                 flag: 'w',
             });
         }
 
-        const conversation = message.conversation ?? message.deviceSentMessage?.message?.conversation ?? message[messageType]?.caption ?? null;
+        const conversation = msgContent?.conversation ?? msgContent[messageType]?.caption ?? null;
 
         if (!conversation) {
             return;
