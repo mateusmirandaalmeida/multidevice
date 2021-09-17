@@ -25,7 +25,7 @@ import got from 'got';
         console.log('received qr', qr);
     });
 
-    session.on('group-participants-update', (update: any) => {
+    session.on('group-update', (update: any) => {
         console.log('received group update', update);
     });
 
