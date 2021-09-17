@@ -861,11 +861,12 @@ export class WaClient extends EventEmitter {
                 return p.content.some((c) => c.attrs.type == 'pkmsg');
             });
 
+            const messageId = generateMessageID();
             const stanza = new WapNode(
                 'message',
                 {
                     to: destination,
-                    id: generateMessageID(),
+                    id: messageId,
                     phash: await phashV2(participantsList),
                     type: 'text',
                 },
@@ -882,7 +883,11 @@ export class WaClient extends EventEmitter {
                     ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : []),
                 ],
             );
-            this.sendMessageAndWait(stanza);
+
+            const frame = this.encodeStanza(stanza);
+            await this.socketConn.sendFrame(frame);
+
+            return messageId;
         } catch (e) {}
     }
 
