@@ -20,6 +20,7 @@ import {
     getAudioDuration,
     DEFAULT_ORIGIN,
     unixTimestampSeconds,
+    inflateBuffer,
 } from './utils/Utils';
 import { Socket } from './socket/Socket';
 import { FrameSocket } from './socket/FrameSocket';
@@ -55,6 +56,9 @@ import { Agent } from 'https';
 import { promises as fs } from 'fs';
 import sharp from 'sharp';
 import { IWAGroupMetadata } from './interfaces/IWAGroupMetadata';
+import { parseGroupMetadata } from './parsers/GroupMetadataParser';
+import { parsePrivacy } from './parsers/PrivacyParser';
+import { parseBlocklist } from './parsers/BlocklistParser';
 
 const sessions = {};
 
@@ -84,6 +88,7 @@ export class WaClient extends EventEmitter {
     private me: WapJid;
     private socketConn: NoiseSocket;
     private enableLog: boolean;
+    private lastTimestampSync: number;
 
     private mediaConn: IMediaConn;
 
@@ -102,6 +107,12 @@ export class WaClient extends EventEmitter {
     private onSocketClose: Function;
 
     private devices: Wid[];
+
+    private privacy: { [key: string]: string } = {};
+
+    private blocklist: WapNode;
+
+    private groups: IWAGroupMetadata[];
 
     constructor({ sessionName, onSocketClose, log, initialStorageData, writeFileStorage }: Props) {
         super();
@@ -261,12 +272,12 @@ export class WaClient extends EventEmitter {
         });
     }
 
-    onlySendFrame(stanza: WapNode) {
+    public onlySendFrame(stanza: WapNode) {
         const frame = this.encodeStanza(stanza);
         if (!this.socketConn) {
             throw 'No Socket Handler';
         }
-        this.socketConn.sendFrame(frame);
+        return this.socketConn.sendFrame(frame);
     }
 
     public uploadPreKeys = async () => {
@@ -304,6 +315,10 @@ export class WaClient extends EventEmitter {
         await this.waSignal.putServerHasPreKeys(true);
     };
 
+    public setLastSyncTimestamp(timestamp: number) {
+        this.lastTimestampSync = timestamp;
+    }
+
     public sendPassiveIq = async (passive: boolean) => {
         const stanza = new WapNode(
             'iq',
@@ -320,7 +335,7 @@ export class WaClient extends EventEmitter {
     };
 
     public encodeStanza(node: any) {
-        const enc =  encodeStanza(node);
+        const enc = encodeStanza(node);
         this.log(`TO SERVER (${enc.byteLength} bytes) ->`, node instanceof WapNode ? node.toString() : node);
 
         return enc;
@@ -353,6 +368,14 @@ export class WaClient extends EventEmitter {
 
     public getDevices() {
         return this.devices;
+    }
+
+    public getPrivacy() {
+        return this.privacy;
+    }
+
+    public isSocketConnected() {
+        return this.socket.isConnected();
     }
 
     public setDevices(devices: Wid[]) {
@@ -520,6 +543,8 @@ export class WaClient extends EventEmitter {
         if (stanza.attrs && stanza.attrs.id && this.socketWaitIqs[stanza.attrs.id]) {
             this.socketWaitIqs[stanza.attrs.id].resolve(stanza);
             delete this.socketWaitIqs[stanza.attrs.id];
+
+            return;
         }
 
         await this.eventHandler.handle(stanza);
@@ -1381,52 +1406,21 @@ export class WaClient extends EventEmitter {
 
         const result = await this.sendMessageAndWait(stanza);
 
-        const group: WapNode = result.content[0];
-        let description = null;
-        let descriptionId = null;
-        if (group.hasChild('description')) {
-            const desc = group.child('description') ?? null;
-            if (desc) {
-                const body = desc.child('body') ?? null;
-                description = body ? body.contentString() : null;
-                descriptionId = desc.attrs?.id ?? null;
-            }
-        }
-
-        const data = <IWAGroupMetadata>{
-            name: group.attrs.subject,
-            id: group.attrs.id,
-            creation: group.attrs.creation,
-            creator: group.attrs.creator.toString(),
-            restrict: result.hasChild('locked'),
-            announce: result.hasChild('announcement'),
-            description,
-            descriptionId,
-            participants: group.content
-                .filter((content: WapNode) => content.tag === 'participant')
-                .map((content: WapNode) => {
-                    return {
-                        jid: content.attrs.jid.toString(),
-                        isAdmin: content.attrs?.type == 'admin' ? true : false,
-                        isSuperAdmin: content.attrs?.type == 'superadmin' ? true : false,
-                    };
-                }),
-        };
-        return data;
+        return parseGroupMetadata(result.content[0]);
     }
 
     public async processProtocolMessage(node: WapNode, msgInfo: any, message: WAProto.IMessage) {
         const protocolMessage = message.protocolMessage;
+
+        if ((node.attrs?.category ?? null) == 'peer') {
+            await this.sendReceiptProtocolMessage(node.attrs.id, 'peer_msg');
+        }
 
         if (protocolMessage.historySyncNotification) {
             await this.processHistorySyncNotification(protocolMessage.historySyncNotification);
             if (node.attrs.id) {
                 await this.sendReceiptProtocolMessage(node.attrs.id, 'hist_sync');
             }
-        }
-
-        if ((node.attrs?.category ?? null) == 'peer') {
-            await this.sendReceiptProtocolMessage(node.attrs.id, 'peer_msg');
         }
     }
 
@@ -1440,15 +1434,161 @@ export class WaClient extends EventEmitter {
         return this.socketConn.sendFrame(this.encodeStanza(receipt));
     }
 
-    public sendDevicesNotificationAck(id: string) {
+    public sendAck(id: string, type: string, className: string) {
         const ack = new WapNode('ack', {
             id,
-            type: 'account_sync',
-            class: 'notification',
+            type,
+            class: className,
             to: WapJid.create(this.me.getUser(), 'c.us'),
         });
 
         return this.socketConn.sendFrame(this.encodeStanza(ack));
+    }
+
+    public async postLogin() {
+        // request blocklist
+        this.log('Requesting blocklist');
+        this.blocklist = await this.requestBlocklist();
+        this.log('Requested blocklist', this.blocklist);
+
+        this.log('Requesting privacy');
+        this.privacy = await this.requestPrivacy();
+        this.log('Requested privacy', this.privacy);
+
+        //sync
+        this.log('Requesting collection sync');
+        await this.requestCollectionSync();
+        this.log('Requested collection sync');
+
+        this.log('Requesting cleanAccountSync');
+        await this.requestCleanAccountSync();
+        this.log('Requested cleanAccountSync');
+
+        this.log('Requesting all groups metadata');
+        this.groups = await this.requestAllGroupsMetadata();
+        this.log('Received all groups', this.groups.length);
+    }
+
+    public async requestBlocklist() {
+        const blocklist = await this.sendMessageAndWait(new WapNode('iq', { xmlns: 'blocklist', to: S_WHATSAPP_NET, type: 'get', id: generateId() }));
+
+        return parseBlocklist(blocklist);
+    }
+
+    public async requestPrivacy() {
+        const privacy = await this.sendMessageAndWait(
+            new WapNode(
+                'iq',
+                {
+                    xmlns: 'privacy',
+                    to: S_WHATSAPP_NET,
+                    type: 'get',
+                    id: generateId(),
+                },
+                [new WapNode('privacy')],
+            ),
+        );
+
+        return parsePrivacy(privacy);
+    }
+
+    public async requestCleanAccountSync(timestamp?: number) {
+        timestamp = timestamp ?? this.lastTimestampSync;
+        if (!timestamp) {
+            return;
+        }
+
+        const clean = new WapNode(
+            'iq',
+            {
+                to: S_WHATSAPP_NET,
+                type: 'set',
+                xmlns: 'urn:xmpp:whatsapp:dirty',
+                id: generateId(),
+            },
+            [
+                new WapNode('clean', {
+                    type: 'account_sync',
+                    timestamp: String(timestamp),
+                }),
+            ],
+        );
+
+        await this.onlySendFrame(clean);
+        return true;
+    }
+
+    public async requestCollectionSync() {
+        const syncs = new WapNode('sync', {}, [
+            new WapNode('collection', { name: 'critical_block', version: '0', return_snapshot: 'true' }),
+            new WapNode('collection', { name: 'critical_unblock_low', version: '0', return_snapshot: 'true' }),
+        ]);
+
+        this.onlySendFrame(
+            new WapNode(
+                'iq',
+                {
+                    to: S_WHATSAPP_NET,
+                    xmlns: 'w:sync:app:state',
+                    type: 'set',
+                    id: generateId(),
+                },
+                [syncs],
+            ),
+        );
+    }
+
+    public async sendPresense(type?: string) {}
+
+    public async requestAllGroupsMetadata() {
+        const req = await this.sendMessageAndWait(
+            new WapNode(
+                'iq',
+                {
+                    to: G_US,
+                    xmlns: 'w:g2',
+                    type: 'get',
+                    id: generateId(),
+                },
+                [new WapNode('participating', {}, [new WapNode('participants'), new WapNode('description')])],
+            ),
+        );
+
+        const groups = req.maybeChild('groups');
+        if (!groups) {
+            return [];
+        }
+
+        return groups.mapChildrenWithTag('group', parseGroupMetadata) as IWAGroupMetadata[];
+    }
+
+    public async getProfilePicUrl(jid: string | WapJid, preview?: boolean) {
+        const phone = typeof jid == 'string' ? toUserId(jid) : jid.getUser();
+
+        const profilePic = await this.sendMessageAndWait(
+            new WapNode(
+                'iq',
+                {
+                    to: WapJid.create(phone, USER_JID_SUFFIX),
+                    type: 'get',
+                    xmlns: 'w:profile:picture',
+                    id: generateId(),
+                },
+                [new WapNode('picture', { query: 'url', ...(preview ? { type: 'preview' } : {}) })],
+            ),
+        );
+
+        const err = profilePic.maybeChild('error');
+        if (err) {
+            return null;
+        }
+
+        const picture = profilePic.maybeChild('picture');
+        if (!picture) {
+            return null;
+        }
+
+        return picture.attrs.url ?? null;
     }
 
     private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
@@ -1464,18 +1604,7 @@ export class WaClient extends EventEmitter {
             'buffer',
         );
 
-        const dataPromise = new Promise<Buffer>((res) => {
-            inflate(buffer as Buffer, (err, result) => {
-                if (err) {
-                    console.error('err to inflate history sync');
-                    return;
-                }
-
-                res(result);
-            });
-        });
-
-        const syncData = WAProto.HistorySync.decode(await dataPromise);
+        const syncData = WAProto.HistorySync.decode(await inflateBuffer(buffer as Buffer));
 
         //console.log('downloaded sync', syncData);
     }
@@ -1563,7 +1692,7 @@ export class WaClient extends EventEmitter {
         return stream;
     }
 
-    private async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
+    public async downloadFromMediaConn(media: any, type: 'buffer' | 'stream' = 'buffer', forceGet = false) {
         const mediaConn = await this.refreshMediaConn(forceGet);
 
         let url = media.directPath ?? null;
@@ -1628,21 +1757,21 @@ export class WaClient extends EventEmitter {
     }
 
     private createKeepAlive = () => {
-        this.keepAliveTimer = setInterval(() => {
-            this.socketConn.sendFrame(
-                this.encodeStanza(
-                    new WapNode(
-                        'iq',
-                        {
-                            id: generateId(),
-                            to: S_WHATSAPP_NET,
-                            type: 'get',
-                            xmlns: 'w:p',
-                        },
-                        [new WapNode('ping')],
-                    ),
+        this.keepAliveTimer = setInterval(async () => {
+            const result = await this.sendMessageAndWait(
+                new WapNode(
+                    'iq',
+                    {
+                        id: generateId(),
+                        to: S_WHATSAPP_NET,
+                        type: 'get',
+                        xmlns: 'w:p',
+                    },
+                    [new WapNode('ping')],
                 ),
             );
+
+            this.emit('received-pong', result.attrInt('t'));
         }, this.KEEP_ALIVE_INTERVAL);
     };
 

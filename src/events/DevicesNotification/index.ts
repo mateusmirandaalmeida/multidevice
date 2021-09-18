@@ -8,7 +8,7 @@ export class DevicesNotificationHandler extends Handler {
 
         this.client.setDevices(data.devices);
 
-        await this.client.sendDevicesNotificationAck(data.id);
+        await this.client.sendAck(data.id, 'account_sync', 'notification');
 
         return true;
     }

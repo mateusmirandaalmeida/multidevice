@@ -5,7 +5,7 @@ import { DEFAULT_ORIGIN, WS_URL } from "./../utils/Utils";
 export class Socket {
   public dataToSend: Binary;
   public conn: WS;
-  public isConnected = false;
+  public connected = false;
 
   public onData: Function;
   public onOpen: Function;
@@ -14,6 +14,10 @@ export class Socket {
 
   constructor() {
     this.dataToSend = new Binary();
+  }
+
+  public isConnected() {
+    return this.connected;
   }
 
   public open() {
@@ -46,13 +50,13 @@ export class Socket {
     };
 
     this.conn.onclose = (e) => {
-      this.isConnected = false;
+      this.connected = false;
       console.log("closed");
       this.onClose && this.onClose(e);
     };
 
     this.conn.onopen = (e) => {
-      this.isConnected = true;
+      this.connected = true;
       this.onOpen && this.onOpen(e);
     };
 
@@ -63,7 +67,7 @@ export class Socket {
   }
 
   public throwIfClosed() {
-    if (this.isConnected) {
+    if (this.connected) {
       return;
     }
 
@@ -71,7 +75,7 @@ export class Socket {
   }
 
   public close() {
-    this.isConnected = false;
+    this.connected = false;
     this.conn.close();
   }
 

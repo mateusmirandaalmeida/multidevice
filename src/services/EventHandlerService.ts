@@ -15,6 +15,9 @@ import { MessageHandler } from '../events/Message/index';
 import { RetryReceiptHandler } from '../events/RetryReceipt/index';
 import { SuccessHandler } from '../events/Success/index';
 import { GroupNotificationHandler } from '../events/GroupNotification';
+import { AccountSyncDirtyHandler } from '../events/AccountSyncDirty';
+import { IbOfflineHandler } from './../events/IbOffline/index';
+import { SyncHandler } from './../events/Sync/index';
 
 export class EventHandlerService {
     protected socket: NoiseSocket;
@@ -43,6 +46,9 @@ export class EventHandlerService {
         this.handlers.push(new MessageAckHandler(this));
         this.handlers.push(new RetryReceiptHandler(this));
         this.handlers.push(new MessageHandler(this));
+        this.handlers.push(new AccountSyncDirtyHandler(this));
+        this.handlers.push(new IbOfflineHandler(this));
+        this.handlers.push(new SyncHandler(this));
         this.handlers.push(new SuccessHandler(this));
      }
 

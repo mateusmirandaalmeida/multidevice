@@ -109,7 +109,7 @@ export class WapNode {
 
     mapChildrenWithTag(tag: string, callback: any) {
         if (!this.content || !Array.isArray(this.content)) {
-            return null;
+            return [];
         }
 
         return this.content.filter((node) => node.tag == tag).map(callback);
