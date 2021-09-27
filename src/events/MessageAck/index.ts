@@ -5,23 +5,34 @@ import { encodeStanza } from '../../proto/Stanza';
 export class MessageAckHandler extends Handler {
     public async handle(node: WapNode) {
         const data = await this.parse(node);
-        this.client.emit('message-status-updated', data);
+
+        const receipt = new WapNode(
+            'ack',
+            {
+                class: 'receipt',
+                id: data.id,
+                to: data.from,
+            },
+            null,
+        );
+
+        this.socket.sendFrame(encodeStanza(receipt));
 
         return true;
     }
 
     public async canHandle(stanza: WapNode) {
-        if (stanza.tag != 'receipt') {
+        if (stanza.tag != 'ack') {
             return false;
         }
 
-        return true;
+        return stanza.attrs.class == 'message';
     }
 
     public async parse(stanza: WapNode) {
         return {
             id: stanza.attrs.id,
-            status: stanza.attrs.type ? stanza.attrs.type : 'deliveried'
+            from: stanza.attrs.from,
         };
     }
 }
