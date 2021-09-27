@@ -2,7 +2,6 @@
 import { WapNode } from '../../proto/WapNode';
 import { Handler } from '../Handler';
 import { S_WHATSAPP_NET } from '../../proto/WapJid';
-import { encodeStanza } from '../../proto/Stanza';
 import { encodeB64 } from '../../utils/Base64';
 import * as QR from 'qrcode-terminal';
 
@@ -16,8 +15,8 @@ export class PairDeviceHandler extends Handler {
             id: node.attrs.id,
         });
 
-        const nodeEnc = encodeStanza(iq);
-        this.socket.sendFrame(nodeEnc);
+        const nodeEnc = this.client.encodeStanza(iq);
+        await this.socket.sendFrame(nodeEnc);
 
         const ref = refs.shift();
 

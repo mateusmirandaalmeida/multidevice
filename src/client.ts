@@ -316,12 +316,14 @@ export class WaClient extends EventEmitter {
             [new WapNode(passive ? 'passive' : 'active', null)],
         );
 
-        this.socketConn.sendFrame(this.encodeStanza(stanza));
+        return this.socketConn.sendFrame(this.encodeStanza(stanza));
     };
 
     public encodeStanza(node: any) {
-        console.log('TO SERVER -> ', node instanceof WapNode ? node.toString() : node);
-        return encodeStanza(node);
+        const enc =  encodeStanza(node);
+        this.log(`TO SERVER (${enc.byteLength} bytes) ->`, node instanceof WapNode ? node.toString() : node);
+
+        return enc;
     }
 
     public getMe() {
@@ -329,7 +331,7 @@ export class WaClient extends EventEmitter {
     }
 
     public sendNotAuthozired(id: string) {
-        this.socketConn.sendFrame(
+        return this.socketConn.sendFrame(
             this.encodeStanza(
                 new WapNode(
                     'iq',
@@ -511,7 +513,7 @@ export class WaClient extends EventEmitter {
         //this.log('received tag node', tag);
 
         if (tag == 'xmlstreamend') {
-            this.socketConn.restart();
+            //this.socketConn.restart();
             return;
         }
 
@@ -526,8 +528,8 @@ export class WaClient extends EventEmitter {
     private onNoiseNewFrame = async (frame) => {
         const data = await unpackStanza(frame);
         const stanza = decodeStanza(data);
-        await this.handleStanza(stanza);
         this.log('FROM SERVER ->', stanza.toString());
+        await this.handleStanza(stanza);
     };
 
     public async ensureIdentityUser(user: WapJid, forceNewSession = false) {
@@ -859,11 +861,12 @@ export class WaClient extends EventEmitter {
                 return p.content.some((c) => c.attrs.type == 'pkmsg');
             });
 
+            const messageId = generateMessageID();
             const stanza = new WapNode(
                 'message',
                 {
                     to: destination,
-                    id: generateMessageID(),
+                    id: messageId,
                     phash: await phashV2(participantsList),
                     type: 'text',
                 },
@@ -880,7 +883,11 @@ export class WaClient extends EventEmitter {
                     ...(shouldHaveIdentity ? [new WapNode('device-identity', {}, deviceIdentity)] : []),
                 ],
             );
-            this.sendMessageAndWait(stanza);
+
+            const frame = this.encodeStanza(stanza);
+            await this.socketConn.sendFrame(frame);
+
+            return messageId;
         } catch (e) {}
     }
 
@@ -1409,25 +1416,39 @@ export class WaClient extends EventEmitter {
     }
 
     public async processProtocolMessage(node: WapNode, msgInfo: any, message: WAProto.IMessage) {
-        console.log(message);
         const protocolMessage = message.protocolMessage;
 
         if (protocolMessage.historySyncNotification) {
             await this.processHistorySyncNotification(protocolMessage.historySyncNotification);
+            if (node.attrs.id) {
+                await this.sendReceiptProtocolMessage(node.attrs.id, 'hist_sync');
+            }
         }
 
-        if (node.attrs.id) {
-            this.sendReciptHistorySync(node.attrs.id);
+        if ((node.attrs?.category ?? null) == 'peer') {
+            await this.sendReceiptProtocolMessage(node.attrs.id, 'peer_msg');
         }
     }
 
-    private sendReciptHistorySync(id: string) {
+    private sendReceiptProtocolMessage(id: string, type: string) {
         const receipt = new WapNode('receipt', {
             id,
-            type: 'hist_sync',
+            type,
             to: WapJid.create(this.me.getUser(), 'c.us'),
         });
-        this.socketConn.sendFrame(encodeStanza(receipt));
+
+        return this.socketConn.sendFrame(this.encodeStanza(receipt));
+    }
+
+    public sendDevicesNotificationAck(id: string) {
+        const ack = new WapNode('ack', {
+            id,
+            type: 'account_sync',
+            class: 'notification',
+            to: WapJid.create(this.me.getUser(), 'c.us'),
+        });
+
+        return this.socketConn.sendFrame(this.encodeStanza(ack));
     }
 
     private async processHistorySyncNotification(historyNotification: WAProto.IHistorySyncNotification) {
@@ -1553,7 +1574,7 @@ export class WaClient extends EventEmitter {
         for (const host of mediaConn.hosts) {
             const reqUrl = `https://${host}${url}&hash=${media.encFilehash}&mms-type=${media.type}&__wa-mms=`;
 
-            console.log('downloading media', reqUrl);
+            this.log('downloading media', reqUrl);
 
             try {
                 const data = await this.downloadMediaMessage(type, reqUrl, media.mediaKey, media.messageType);

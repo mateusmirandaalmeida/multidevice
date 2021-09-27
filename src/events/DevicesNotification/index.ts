@@ -4,9 +4,11 @@ import { Wid } from '../../proto/Wid';
 
 export class DevicesNotificationHandler extends Handler {
     public async handle(node: WapNode) {
-        const devices = await this.parse(node);
+        const data = await this.parse(node);
 
-        this.client.setDevices(devices);
+        this.client.setDevices(data.devices);
+
+        await this.client.sendDevicesNotificationAck(data.id);
 
         return true;
     }
@@ -41,6 +43,9 @@ export class DevicesNotificationHandler extends Handler {
             }
         });
 
-        return devices;
+        return {
+            id: stanza.attrs.id,
+            devices,
+        };
     }
 }

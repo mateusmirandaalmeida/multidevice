@@ -132,7 +132,6 @@ export class WaSignal {
 
     createLibSignalAddress = (e: WapJid) => {
         if (!(e.isUser() || e.isServer() || e.isPSA())) {
-            console.log('useeeer', e);
             throw new Error(`Jid ${e.toString()} is not fully qualified, jid.server should be "s.whatsapp.net"`);
         }
 
