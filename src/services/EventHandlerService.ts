@@ -16,6 +16,7 @@ import { RetryReceiptHandler } from '../events/RetryReceipt/index';
 import { SuccessHandler } from '../events/Success/index';
 import { GroupNotificationHandler } from '../events/GroupNotification';
 import { ReceiptHandler } from '../events/ReceiptHandler';
+import { StatusNotificationHandler } from '../events/StatusNotification';
 
 export class EventHandlerService {
     protected socket: NoiseSocket;
@@ -46,6 +47,7 @@ export class EventHandlerService {
         this.handlers.push(new MessageHandler(this));
         this.handlers.push(new SuccessHandler(this));
         this.handlers.push(new ReceiptHandler(this));
+        this.handlers.push(new StatusNotificationHandler(this));
      }
 
      public async handle(stanza: WapNode) {
