@@ -1756,6 +1756,10 @@ export class WaClient extends EventEmitter {
         };
     }
 
+    public getSocket = () => {
+        return this.socket;
+    }
+
     private createKeepAlive = () => {
         this.keepAliveTimer = setInterval(async () => {
             const result = await this.sendMessageAndWait(
