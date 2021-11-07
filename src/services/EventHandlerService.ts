@@ -8,16 +8,18 @@ import { StorageService } from './StorageService';
 import { WaSignal } from '../signal/Signal';
 import { PairDeviceSuccessHandler } from '../events/PairDeviceSuccess';
 import { StreamErrorHandler } from '../events/StreamError';
-import { StreamFailureHandler } from '../events/StreamFailure/index';
-import { DevicesNotificationHandler } from '../events/DevicesNotification/index';
-import { MessageAckHandler } from '../events/MessageAck/index';
-import { MessageHandler } from '../events/Message/index';
-import { RetryReceiptHandler } from '../events/RetryReceipt/index';
-import { SuccessHandler } from '../events/Success/index';
+import { StreamFailureHandler } from '../events/StreamFailure';
+import { DevicesNotificationHandler } from '../events/DevicesNotification';
+import { MessageAckHandler } from '../events/MessageAck';
+import { MessageHandler } from '../events/Message';
+import { RetryReceiptHandler } from '../events/RetryReceipt';
+import { SuccessHandler } from '../events/Success';
 import { GroupNotificationHandler } from '../events/GroupNotification';
 import { AccountSyncDirtyHandler } from '../events/AccountSyncDirty';
-import { IbOfflineHandler } from './../events/IbOffline/index';
-import { SyncHandler } from './../events/Sync/index';
+import { IbOfflineHandler } from './../events/IbOffline';
+import { SyncHandler } from './../events/Sync';
+import { ReceiptHandler } from '../events/ReceiptHandler';
+import { StatusNotificationHandler } from '../events/StatusNotification';
 
 export class EventHandlerService {
     protected socket: NoiseSocket;
@@ -50,6 +52,8 @@ export class EventHandlerService {
         this.handlers.push(new IbOfflineHandler(this));
         this.handlers.push(new SyncHandler(this));
         this.handlers.push(new SuccessHandler(this));
+        this.handlers.push(new ReceiptHandler(this));
+        this.handlers.push(new StatusNotificationHandler(this));
      }
 
      public async handle(stanza: WapNode) {
