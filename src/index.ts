@@ -33,6 +33,12 @@ import got from 'got';
         console.log('connection was closed', update);
     });
 
+    session.on('message-status-updated', (update: any) => {
+        // update.status = deliveried, read
+        console.log('message status was updated', update);
+    });
+    
+
     session.on('message', async (message: any) => {
         console.log('message received', message);
 
